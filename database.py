@@ -60,8 +60,10 @@ class IdentifiedStock(Base):
     __tablename__ = "identified_stocks"
     
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String(10), nullable=False, index=True)  # 股票代码
+    symbol = Column(String(20), nullable=False, index=True)  # 股票代码（支持更长代码如A股）
     company_name = Column(String(200))  # 公司名称
+    stock_type = Column(String(20), default="us_stock", index=True)  # 类型：us_stock, a_stock, futures
+    market = Column(String(50))  # 市场：NYSE, NASDAQ, SSE, SZSE, SHFE, DCE, CZCE, CFFEX等
     relevance = Column(Text)  # 与主题的相关性说明
     theme = Column(String(100))  # 关联的主题
     source = Column(String(100))  # 来源：ai_analysis, manual, etc.
@@ -70,7 +72,7 @@ class IdentifiedStock(Base):
     last_updated_at = Column(DateTime)  # 最后更新时间
     
     def __repr__(self):
-        return f"<IdentifiedStock(id={self.id}, symbol='{self.symbol}', company='{self.company_name}')>"
+        return f"<IdentifiedStock(id={self.id}, symbol='{self.symbol}', type='{self.stock_type}', company='{self.company_name}')>"
 
 
 class StockPrice(Base):
@@ -78,7 +80,8 @@ class StockPrice(Base):
     __tablename__ = "stock_prices"
     
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String(10), nullable=False, index=True)  # 股票代码
+    symbol = Column(String(20), nullable=False, index=True)  # 股票代码
+    stock_type = Column(String(20), default="us_stock", index=True)  # 类型：us_stock, a_stock, futures
     price = Column(Float, nullable=False)  # 价格
     change = Column(Float)  # 涨跌额
     change_percent = Column(Float)  # 涨跌幅
@@ -87,7 +90,7 @@ class StockPrice(Base):
     source = Column(String(100))  # 数据来源
     
     def __repr__(self):
-        return f"<StockPrice(id={self.id}, symbol='{self.symbol}', price={self.price}, timestamp={self.timestamp})>"
+        return f"<StockPrice(id={self.id}, symbol='{self.symbol}', type='{self.stock_type}', price={self.price}, timestamp={self.timestamp})>"
 
 
 class Database:
@@ -413,7 +416,7 @@ class Database:
             existing = session.query(IdentifiedStock).filter_by(symbol=symbol).first()
             
             valid_fields = {
-                "symbol", "company_name", "relevance", "theme", 
+                "symbol", "company_name", "stock_type", "market", "relevance", "theme", 
                 "source", "is_active", "identified_at", "last_updated_at"
             }
             
@@ -423,6 +426,8 @@ class Database:
             if existing:
                 # 更新现有记录
                 existing.company_name = filtered_data.get("company_name", existing.company_name)
+                existing.stock_type = filtered_data.get("stock_type", existing.stock_type)
+                existing.market = filtered_data.get("market", existing.market)
                 existing.relevance = filtered_data.get("relevance", existing.relevance)
                 existing.theme = filtered_data.get("theme", existing.theme)
                 existing.source = filtered_data.get("source", existing.source)
@@ -449,6 +454,7 @@ class Database:
         self,
         is_active: Optional[bool] = None,
         theme: Optional[str] = None,
+        stock_type: Optional[str] = None,
         limit: int = 100
     ) -> List[IdentifiedStock]:
         """获取识别的股票列表"""
@@ -461,6 +467,9 @@ class Database:
             
             if theme:
                 query = query.filter(IdentifiedStock.theme == theme)
+            
+            if stock_type:
+                query = query.filter(IdentifiedStock.stock_type == stock_type)
             
             return query.order_by(
                 IdentifiedStock.identified_at.desc()
@@ -478,6 +487,7 @@ class Database:
             
             price_obj = StockPrice(
                 symbol=symbol,
+                stock_type=price_data.get("stock_type", "us_stock"),
                 price=price_data.get("price"),
                 change=price_data.get("change"),
                 change_percent=price_data.get("change_percent"),

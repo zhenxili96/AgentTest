@@ -420,9 +420,12 @@ def get_identified_stocks():
         theme = request.args.get("theme")
         limit = request.args.get("limit", type=int, default=100)
         
+        stock_type = request.args.get("stock_type")  # 可选：us_stock, a_stock, futures
+        
         stocks = db.get_identified_stocks(
             is_active=is_active,
             theme=theme,
+            stock_type=stock_type,
             limit=limit
         )
         
@@ -432,6 +435,8 @@ def get_identified_stocks():
                 "id": stock.id,
                 "symbol": stock.symbol,
                 "company_name": stock.company_name,
+                "stock_type": stock.stock_type or "us_stock",
+                "market": stock.market,
                 "relevance": stock.relevance,
                 "theme": stock.theme,
                 "source": stock.source,
@@ -487,19 +492,43 @@ def identify_stocks():
 def get_stock_price(symbol):
     """获取股票实时价格"""
     try:
-        price_data = stock_fetcher.fetch_realtime_price(symbol)
+        stock_type = request.args.get("type")  # 可选：us_stock, a_stock, futures
+        
+        # 先尝试从数据库获取最新价格
+        latest_price = db.get_latest_stock_price(symbol)
+        
+        # 尝试获取实时价格
+        price_data = stock_fetcher.fetch_realtime_price(symbol, stock_type=stock_type)
+        
         if price_data:
             return jsonify({
                 "success": True,
                 "price": price_data,
             })
+        elif latest_price:
+            # 如果无法获取实时价格，返回数据库中的最新价格
+            return jsonify({
+                "success": True,
+                "price": {
+                    "symbol": latest_price.symbol,
+                    "price": latest_price.price,
+                    "change": latest_price.change,
+                    "change_percent": latest_price.change_percent,
+                    "volume": latest_price.volume,
+                    "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                    "source": latest_price.source or "database",
+                },
+                "note": "使用数据库中的最新价格（可能不是实时数据）"
+            })
         else:
+            # 如果既没有实时价格也没有历史价格，返回错误信息但不返回404
             return jsonify({
                 "success": False,
                 "error": "无法获取股票价格，请检查股票代码或API配置",
-            }), 404
+                "symbol": symbol.upper()
+            }), 200  # 改为200，让前端可以处理错误信息
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e), "symbol": symbol.upper()}), 200
 
 
 @app.route("/api/stocks/<symbol>/chart", methods=["GET"])
@@ -578,7 +607,15 @@ def update_stock_prices():
         updated_count = 0
         results = {}
         for symbol in symbols_list:
-            price_data = stock_fetcher.fetch_realtime_price(symbol)
+            # 从数据库获取股票类型
+            stock = db.get_identified_stocks(limit=1000)
+            stock_type = None
+            for s in stock:
+                if s.symbol == symbol:
+                    stock_type = s.stock_type
+                    break
+            
+            price_data = stock_fetcher.fetch_realtime_price(symbol, stock_type=stock_type)
             if price_data:
                 updated_count += 1
                 results[symbol] = price_data

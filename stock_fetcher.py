@@ -5,6 +5,14 @@ from typing import List, Dict, Optional, Union
 from config import Config
 from database import db
 
+# 尝试导入akshare（用于A股和期货数据）
+try:
+    import akshare as ak
+    HAS_AKSHARE = True
+except ImportError:
+    HAS_AKSHARE = False
+    print("⚠️ 未安装akshare库，A股和期货数据功能将不可用。安装命令：pip install akshare")
+
 
 class StockFetcher:
     """股票数据获取类"""
@@ -13,11 +21,47 @@ class StockFetcher:
         self.alpha_vantage_key = Config.ALPHA_VANTAGE_API_KEY
         self.user_agent = Config.USER_AGENT
     
+    def _detect_stock_type(self, symbol: str) -> str:
+        """自动检测股票类型"""
+        symbol_upper = symbol.upper()
+        # A股：6位数字
+        if symbol_upper.isdigit() and len(symbol_upper) == 6:
+            return "a_stock"
+        # 期货：通常是2-4个字母
+        elif symbol_upper.isalpha() and len(symbol_upper) <= 4:
+            # 常见期货代码
+            futures_codes = ["AG", "AU", "CU", "AL", "ZN", "PB", "NI", "SN", "RB", "HC", "BU", "RU", 
+                           "FU", "SP", "NR", "I", "J", "JM", "JD", "L", "V", "PP", "C", "CS", "A", 
+                           "B", "M", "Y", "P", "CF", "CY", "SR", "TA", "OI", "MA", "FG", "RS", "RM",
+                           "ZC", "WH", "PM", "RI", "LR", "JR", "SF", "SM", "UR", "SA", "PF", "PK"]
+            if symbol_upper in futures_codes:
+                return "futures"
+        # 默认美股
+        return "us_stock"
+    
     def fetch_realtime_price(
+        self,
+        symbol: str,
+        stock_type: Optional[str] = None
+    ) -> Optional[Dict]:
+        """获取股票实时价格"""
+        if stock_type is None:
+            stock_type = self._detect_stock_type(symbol)
+        
+        # 根据类型选择不同的数据源
+        if stock_type == "a_stock":
+            return self._fetch_a_stock_price(symbol)
+        elif stock_type == "futures":
+            return self._fetch_futures_price(symbol)
+        else:
+            # 美股使用Alpha Vantage
+            return self._fetch_us_stock_price(symbol)
+    
+    def _fetch_us_stock_price(
         self,
         symbol: str
     ) -> Optional[Dict]:
-        """获取股票实时价格"""
+        """获取美股实时价格（使用Alpha Vantage）"""
         if not self.alpha_vantage_key:
             return None
         
@@ -43,6 +87,7 @@ class StockFetcher:
             
             price_data = {
                 "symbol": quote.get("01. symbol", symbol.upper()),
+                "stock_type": "us_stock",
                 "price": self._safe_float(quote.get("05. price")),
                 "change": self._safe_float(quote.get("09. change")),
                 "change_percent": self._parse_percent(quote.get("10. change percent", "")),
@@ -57,7 +102,195 @@ class StockFetcher:
             
             return price_data
         except Exception as e:
-            print(f"获取股票 {symbol} 实时价格出错: {e}")
+            print(f"获取美股 {symbol} 实时价格出错: {e}")
+            return None
+    
+    def _fetch_a_stock_price(
+        self,
+        symbol: str
+    ) -> Optional[Dict]:
+        """获取A股实时价格（使用akshare）"""
+        if not HAS_AKSHARE:
+            print(f"⚠️ 无法获取A股 {symbol} 价格：未安装akshare库")
+            return None
+        
+        try:
+            # 判断是上交所还是深交所
+            if symbol.startswith("6"):
+                market = "SSE"  # 上交所
+                symbol_with_suffix = f"sh{symbol}"
+            elif symbol.startswith("0") or symbol.startswith("3"):
+                market = "SZSE"  # 深交所
+                symbol_with_suffix = f"sz{symbol}"
+            else:
+                print(f"⚠️ 无法识别A股代码 {symbol} 的市场")
+                return None
+            
+            # 使用akshare获取实时行情
+            df = ak.stock_zh_a_spot_em()
+            stock_data = df[df["代码"] == symbol]
+            
+            if stock_data.empty:
+                print(f"⚠️ 未找到A股代码 {symbol}")
+                return None
+            
+            row = stock_data.iloc[0]
+            
+            # 计算涨跌幅
+            current_price = self._safe_float(row.get("最新价"))
+            change = self._safe_float(row.get("涨跌额"))
+            change_percent = self._safe_float(row.get("涨跌幅"))
+            volume = self._safe_int(row.get("成交量"))
+            
+            price_data = {
+                "symbol": symbol,
+                "stock_type": "a_stock",
+                "price": current_price,
+                "change": change,
+                "change_percent": change_percent,
+                "volume": volume,
+                "market": market,
+                "timestamp": datetime.utcnow(),
+                "source": "akshare"
+            }
+            
+            # 保存到数据库
+            db.add_stock_price(price_data)
+            
+            return price_data
+        except Exception as e:
+            print(f"获取A股 {symbol} 实时价格出错: {e}")
+            return None
+    
+    def _fetch_futures_price(
+        self,
+        symbol: str
+    ) -> Optional[Dict]:
+        """获取期货实时价格（使用akshare）"""
+        if not HAS_AKSHARE:
+            print(f"⚠️ 无法获取期货 {symbol} 价格：未安装akshare库")
+            return None
+        
+        try:
+            symbol_upper = symbol.upper()
+            
+            # 期货代码到交易所的映射
+            futures_exchange_map = {
+                # 上期所 (SHFE)
+                "AG": "SHFE", "AU": "SHFE", "CU": "SHFE", "AL": "SHFE", 
+                "ZN": "SHFE", "PB": "SHFE", "NI": "SHFE", "SN": "SHFE",
+                "RB": "SHFE", "HC": "SHFE", "BU": "SHFE", "RU": "SHFE",
+                "FU": "SHFE", "SP": "SHFE", "NR": "SHFE",
+                # 大商所 (DCE)
+                "I": "DCE", "J": "DCE", "JM": "DCE", "JD": "DCE",
+                "L": "DCE", "V": "DCE", "PP": "DCE", "C": "DCE",
+                "CS": "DCE", "A": "DCE", "B": "DCE", "M": "DCE",
+                "Y": "DCE", "P": "DCE",
+                # 郑商所 (CZCE)
+                "CF": "CZCE", "CY": "CZCE", "SR": "CZCE", "TA": "CZCE",
+                "OI": "CZCE", "MA": "CZCE", "FG": "CZCE", "RS": "CZCE",
+                "RM": "CZCE", "ZC": "CZCE", "WH": "CZCE", "PM": "CZCE",
+                "RI": "CZCE", "LR": "CZCE", "JR": "CZCE", "SF": "CZCE",
+                "SM": "CZCE", "UR": "CZCE", "SA": "CZCE", "PF": "CZCE",
+                "PK": "CZCE",
+            }
+            
+            exchange = futures_exchange_map.get(symbol_upper, "SHFE")
+            
+            # 尝试获取期货主力合约数据
+            try:
+                # 获取期货主力合约列表
+                futures_list = ak.futures_main_sina()
+                
+                if futures_list.empty:
+                    print(f"⚠️ 无法获取期货列表")
+                    return None
+                
+                # 查找匹配的期货（通过代码前缀匹配）
+                symbol_lower = symbol.lower()
+                futures_data = futures_list[
+                    futures_list["symbol"].str.startswith(symbol_lower, na=False) |
+                    futures_list["symbol"].str.startswith(symbol_upper, na=False)
+                ]
+                
+                if futures_data.empty:
+                    print(f"⚠️ 未找到期货代码 {symbol}")
+                    return None
+                
+                # 取第一个匹配的（通常是主力合约）
+                row = futures_data.iloc[0]
+                futures_symbol = row["symbol"]
+                
+                # 获取实时行情
+                quote = ak.futures_zh_realtime_sina(symbol=futures_symbol)
+                
+                if quote.empty or len(quote) == 0:
+                    print(f"⚠️ 无法获取期货 {futures_symbol} 的实时行情")
+                    return None
+                
+                quote_row = quote.iloc[0]
+                
+                # 获取价格数据（字段名可能因akshare版本而异）
+                current_price = None
+                change = None
+                change_percent = None
+                volume = None
+                
+                # 尝试不同的字段名
+                price_fields = ["current_price", "最新价", "price", "现价"]
+                change_fields = ["change", "涨跌", "涨跌额"]
+                percent_fields = ["change_percent", "涨跌幅", "涨跌%"]
+                volume_fields = ["volume", "成交量", "vol"]
+                
+                for field in price_fields:
+                    if field in quote_row:
+                        current_price = self._safe_float(quote_row[field])
+                        break
+                
+                for field in change_fields:
+                    if field in quote_row:
+                        change = self._safe_float(quote_row[field])
+                        break
+                
+                for field in percent_fields:
+                    if field in quote_row:
+                        change_percent = self._safe_float(quote_row[field])
+                        break
+                
+                for field in volume_fields:
+                    if field in quote_row:
+                        volume = self._safe_int(quote_row[field])
+                        break
+                
+                if current_price is None:
+                    print(f"⚠️ 无法解析期货 {futures_symbol} 的价格数据")
+                    return None
+                
+                price_data = {
+                    "symbol": symbol_upper,
+                    "stock_type": "futures",
+                    "price": current_price,
+                    "change": change,
+                    "change_percent": change_percent,
+                    "volume": volume,
+                    "market": exchange,
+                    "timestamp": datetime.utcnow(),
+                    "source": "akshare"
+                }
+                
+                # 保存到数据库
+                db.add_stock_price(price_data)
+                
+                return price_data
+            except Exception as e:
+                print(f"获取期货 {symbol} 价格时出错: {e}")
+                import traceback
+                traceback.print_exc()
+                return None
+        except Exception as e:
+            print(f"获取期货 {symbol} 实时价格出错: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     
     def fetch_intraday_data(

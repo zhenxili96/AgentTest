@@ -82,23 +82,27 @@ class StockIdentifier:
             theme_name = theme or Config.DEFAULT_THEME
             keywords_text = "\n".join([f"- {kw}" for kw in keywords[:50]])  # 限制前50个关键词
             
-            prompt = f"""请从以下与{theme_name}投资相关的关键词中，识别出可能相关的股票代码（美股代码，如AAPL、MSFT等）。
+            prompt = f"""请从以下与{theme_name}投资相关的关键词中，识别出可能相关的股票、A股和期货代码。
 
 关键词列表：
 {keywords_text}
 
 任务要求：
-1. 识别出与这些关键词相关的股票代码（美股代码，1-5个字母）
-2. 包括但不限于：矿业公司、贵金属ETF、工业金属相关股票、能源相关股票等
-3. 每个股票需要说明其与{theme_name}投资的相关性
-4. 只返回真实存在的股票代码，不要返回占位符或示例代码
+1. 识别出与这些关键词相关的：
+   - 美股代码（1-5个字母，如AAPL、SLV等）
+   - A股代码（6位数字，如000001、600519等，需要标注市场：SSE上交所或SZSE深交所）
+   - 期货代码（如AG、AU、CU等，需要标注交易所：SHFE上期所、DCE大商所、CZCE郑商所、CFFEX中金所）
+2. 包括但不限于：矿业公司、贵金属ETF、工业金属相关股票、能源相关股票、期货合约等
+3. 每个标的需要说明其与{theme_name}投资的相关性
+4. 只返回真实存在的代码，不要返回占位符或示例代码
 
-请以以下格式返回，每个股票一行：
-股票代码 | 公司名称 | 相关性说明
+请以以下格式返回，每个标的一行：
+代码 | 类型(us_stock/a_stock/futures) | 市场/交易所 | 名称 | 相关性说明
 
-示例（真实股票）：
-SLV | iShares Silver Trust | 白银ETF，直接跟踪白银价格
-GDX | VanEck Gold Miners ETF | 黄金矿业ETF，与贵金属相关
+示例（真实标的）：
+SLV | us_stock | NYSE | iShares Silver Trust | 白银ETF，直接跟踪白银价格
+000001 | a_stock | SZSE | 平安银行 | 银行股，与贵金属投资相关
+AG | futures | SHFE | 白银期货 | 上海期货交易所白银期货主力合约
 """
             
             # 尝试调用AI API
@@ -166,18 +170,21 @@ GDX | VanEck Gold Miners ETF | 黄金矿业ETF，与贵金属相关
             theme_name = theme or Config.DEFAULT_THEME
             articles_text = self._build_articles_summary(articles[:limit], theme_name)
             
-            prompt = f"""请从以下高置信度的{theme_name}投资相关文章中，识别出可能相关的股票代码（美股代码，如AAPL、MSFT等）。
+            prompt = f"""请从以下高置信度的{theme_name}投资相关文章中，识别出可能相关的股票、A股和期货代码。
 
 {articles_text}
 
 任务要求：
-1. 识别出文章中提到的或与文章主题相关的股票代码（美股代码，1-5个字母）
-2. 包括但不限于：矿业公司、贵金属ETF、工业金属相关股票、能源相关股票等
-3. 每个股票需要说明其与{theme_name}投资的相关性
-4. 只返回真实存在的股票代码，不要返回占位符或示例代码
+1. 识别出文章中提到的或与文章主题相关的：
+   - 美股代码（1-5个字母，如AAPL、SLV等）
+   - A股代码（6位数字，如000001、600519等，需要标注市场：SSE上交所或SZSE深交所）
+   - 期货代码（如AG、AU、CU等，需要标注交易所：SHFE上期所、DCE大商所、CZCE郑商所、CFFEX中金所）
+2. 包括但不限于：矿业公司、贵金属ETF、工业金属相关股票、能源相关股票、期货合约等
+3. 每个标的需要说明其与{theme_name}投资的相关性
+4. 只返回真实存在的代码，不要返回占位符或示例代码
 
-请以以下格式返回，每个股票一行：
-股票代码 | 公司名称 | 相关性说明
+请以以下格式返回，每个标的一行：
+代码 | 类型(us_stock/a_stock/futures) | 市场/交易所 | 名称 | 相关性说明
 """
             
             # 尝试调用AI API
@@ -259,23 +266,57 @@ GDX | VanEck Gold Miners ETF | 黄金矿业ETF，与贵金属相关
                 parts = [p.strip() for p in line.split("|")]
                 if len(parts) >= 2:
                     symbol = parts[0].strip().upper()
-                    if not symbol or len(symbol) > 5 or len(symbol) < 1:
+                    if not symbol:
                         continue
+                    
+                    # 根据类型验证代码格式
+                    stock_type = "us_stock"  # 默认
+                    market = None
+                    
+                    if len(parts) >= 3:
+                        type_str = parts[1].strip().lower()
+                        if "a_stock" in type_str or "a股" in type_str:
+                            stock_type = "a_stock"
+                            # A股代码应该是6位数字
+                            if not (symbol.isdigit() and len(symbol) == 6):
+                                continue
+                        elif "futures" in type_str or "期货" in type_str:
+                            stock_type = "futures"
+                        elif "us_stock" in type_str or "美股" in type_str:
+                            stock_type = "us_stock"
+                            # 美股代码1-5个字母
+                            if len(symbol) > 5 or not symbol.isalpha():
+                                continue
+                        else:
+                            # 尝试自动判断类型
+                            if symbol.isdigit() and len(symbol) == 6:
+                                stock_type = "a_stock"
+                            elif len(symbol) <= 5 and symbol.isalpha():
+                                stock_type = "us_stock"
+                            else:
+                                stock_type = "futures"
+                    
+                    # 获取市场/交易所信息
+                    if len(parts) >= 3:
+                        market = parts[2].strip() if len(parts) > 2 else None
                     
                     # 过滤掉明显的占位符
                     if self._is_invalid_symbol(symbol):
                         continue
                     
-                    # 去重
-                    if symbol in seen_symbols:
+                    # 去重（使用symbol+stock_type作为唯一键）
+                    unique_key = f"{symbol}_{stock_type}"
+                    if unique_key in seen_symbols:
                         continue
-                    seen_symbols.add(symbol)
+                    seen_symbols.add(unique_key)
                     
-                    company_name = parts[1] if len(parts) > 1 else ""
-                    relevance = parts[2] if len(parts) > 2 else ""
+                    company_name = parts[3] if len(parts) > 3 else (parts[1] if len(parts) > 1 else "")
+                    relevance = parts[4] if len(parts) > 4 else (parts[2] if len(parts) > 2 else "")
                     
                     stocks.append({
                         "symbol": symbol,
+                        "stock_type": stock_type,
+                        "market": market,
                         "company_name": company_name,
                         "relevance": relevance,
                         "theme": theme,
@@ -305,9 +346,15 @@ GDX | VanEck Gold Miners ETF | 黄金矿业ETF，与贵金属相关
         if symbol_upper in invalid_patterns:
             return True
         
-        # 检查是否只包含常见单词
-        common_words = ["THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS", "ONE", "OUR", "OUT", "DAY", "GET", "HAS", "HIM", "HIS", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD", "SEE", "TWO", "WAY", "WHO", "BOY", "DID", "ITS", "LET", "PUT", "SAY", "SHE", "TOO", "USE"]
-        if symbol_upper in common_words:
-            return True
+        # 对于数字代码（A股），检查是否是明显的占位符
+        if symbol.isdigit():
+            if symbol in ["000000", "111111", "999999", "123456", "654321"]:
+                return True
+        
+        # 检查是否只包含常见单词（仅对字母代码）
+        if symbol.isalpha():
+            common_words = ["THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HER", "WAS", "ONE", "OUR", "OUT", "DAY", "GET", "HAS", "HIM", "HIS", "HOW", "ITS", "MAY", "NEW", "NOW", "OLD", "SEE", "TWO", "WAY", "WHO", "BOY", "DID", "ITS", "LET", "PUT", "SAY", "SHE", "TOO", "USE"]
+            if symbol_upper in common_words:
+                return True
         
         return False

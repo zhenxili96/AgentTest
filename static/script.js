@@ -712,10 +712,12 @@ async function loadStocks() {
     
     const active = document.getElementById('stocks-active').value;
     const limit = parseInt(document.getElementById('stocks-limit').value) || 50;
+    const stockType = document.getElementById('stocks-type').value;
     
     const params = new URLSearchParams();
     if (active) params.append('active', active);
     if (limit) params.append('limit', limit);
+    if (stockType) params.append('stock_type', stockType);
     
     try {
         const response = await fetch(`${API_BASE}/stocks/identified?${params.toString()}`);
@@ -731,14 +733,22 @@ async function loadStocks() {
             const stocksWithPrices = await Promise.all(
                 result.stocks.map(async (stock) => {
                     try {
-                        const priceResponse = await fetch(`${API_BASE}/stocks/${stock.symbol}/price`);
+                        const priceUrl = `${API_BASE}/stocks/${stock.symbol}/price${stock.stock_type ? `?type=${stock.stock_type}` : ''}`;
+                        const priceResponse = await fetch(priceUrl);
+                        // 确保响应是成功的（200状态码）
+                        if (!priceResponse.ok) {
+                            console.warn(`获取股票 ${stock.symbol} 价格失败: HTTP ${priceResponse.status}`);
+                            return { ...stock, current_price: null };
+                        }
                         const priceResult = await priceResponse.json();
                         return {
                             ...stock,
-                            current_price: priceResult.success ? priceResult.price : null
+                            current_price: priceResult.success ? priceResult.price : null,
+                            price_error: priceResult.success ? null : (priceResult.error || '无法获取价格')
                         };
                     } catch (e) {
-                        return { ...stock, current_price: null };
+                        console.error(`获取股票 ${stock.symbol} 价格出错:`, e);
+                        return { ...stock, current_price: null, price_error: '网络错误' };
                     }
                 })
             );
@@ -747,20 +757,38 @@ async function loadStocks() {
                 <div class="stock-item">
                     <div class="stock-header">
                         <div class="stock-symbol-info">
-                            <span class="stock-symbol">${escapeHtml(stock.symbol)}</span>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span class="stock-symbol">${escapeHtml(stock.symbol)}</span>
+                                ${stock.stock_type ? `
+                                    <span class="stock-type-badge stock-type-${stock.stock_type}">
+                                        ${stock.stock_type === 'us_stock' ? '美股' : stock.stock_type === 'a_stock' ? 'A股' : '期货'}
+                                    </span>
+                                ` : ''}
+                                ${stock.market ? `<span style="font-size: 0.85em; color: #666;">${escapeHtml(stock.market)}</span>` : ''}
+                            </div>
                             ${stock.company_name ? `<span class="stock-company">${escapeHtml(stock.company_name)}</span>` : ''}
                         </div>
                         ${stock.current_price ? `
                             <div class="stock-price-info">
-                                <span class="stock-price">$${stock.current_price.price?.toFixed(2) || 'N/A'}</span>
+                                <span class="stock-price">
+                                    ${stock.stock_type === 'a_stock' || stock.stock_type === 'futures' ? '' : '$'}${stock.current_price.price?.toFixed(2) || 'N/A'}
+                                    ${stock.stock_type === 'a_stock' ? '元' : stock.stock_type === 'futures' ? '元/手' : ''}
+                                </span>
                                 ${stock.current_price.change !== null ? `
                                     <span class="stock-change ${stock.current_price.change >= 0 ? 'positive' : 'negative'}">
                                         ${stock.current_price.change >= 0 ? '+' : ''}${stock.current_price.change?.toFixed(2) || '0.00'} 
                                         (${stock.current_price.change_percent >= 0 ? '+' : ''}${stock.current_price.change_percent?.toFixed(2) || '0.00'}%)
                                     </span>
                                 ` : ''}
+                                ${stock.current_price.source === 'database' ? '<span style="font-size: 0.8em; color: #666; margin-left: 5px;">(历史数据)</span>' : ''}
                             </div>
-                        ` : '<div class="stock-price-info"><span class="stock-price">价格加载中...</span></div>'}
+                        ` : `
+                            <div class="stock-price-info">
+                                <span class="stock-price" style="color: #999;">
+                                    ${stock.price_error ? `⚠️ ${escapeHtml(stock.price_error)}` : '价格加载中...'}
+                                </span>
+                            </div>
+                        `}
                     </div>
                     <div class="stock-meta">
                         ${stock.relevance ? `<span><strong>相关性：</strong>${escapeHtml(stock.relevance)}</span>` : ''}

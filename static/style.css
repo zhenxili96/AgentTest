@@ -1133,6 +1133,29 @@ header h1 {
     color: #666;
 }
 
+.stock-type-badge {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75em;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.stock-type-us_stock {
+    background: #e3f2fd;
+    color: #1976d2;
+}
+
+.stock-type-a_stock {
+    background: #fff3e0;
+    color: #f57c00;
+}
+
+.stock-type-futures {
+    background: #f3e5f5;
+    color: #7b1fa2;
+}
+
 .stock-price-info {
     display: flex;
     flex-direction: column;
