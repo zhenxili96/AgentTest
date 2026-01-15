@@ -128,6 +128,47 @@ financial-agent/
 └── static/                # 静态资源
 ```
 
+## 整体架构图
+
+```mermaid
+flowchart LR
+    subgraph Sources[数据源模块]
+        NewsAPI[NewsAPI]
+        RSS[RSS Feeds]
+        Market[股市行情API]
+    end
+
+    subgraph Pipeline[检索与评估模块]
+        Search[Search Engine]
+        Miner[Keyword Miner]
+        Eval[Confidence Evaluator]
+    end
+
+    subgraph Orchestration[调度与运行模块]
+        Scheduler[Scheduler]
+        Main[Main Runner]
+    end
+
+    subgraph Storage[存储模块]
+        DB[(SQLite/PostgreSQL)]
+    end
+
+    subgraph Service[服务与访问模块]
+        API[Flask API]
+        Client[客户端/用户]
+    end
+
+    Sources --> Search
+    Search --> Miner
+    Search --> Eval
+    Miner --> Eval
+    Eval --> DB
+    Main --> Scheduler
+    Scheduler --> Search
+    API --> DB
+    Client --> API
+```
+
 ## 数据源
 
 当前支持的数据源：
