@@ -26,6 +26,9 @@ class Config:
     
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///silver_investment.db")
+
+    # 默认投资主题（可通过环境变量覆盖）
+    DEFAULT_THEME: str = os.getenv("DEFAULT_THEME", "白银")
     
     # 搜索配置
     SEARCH_INTERVAL_MINUTES: int = int(os.getenv("SEARCH_INTERVAL_MINUTES", "30"))

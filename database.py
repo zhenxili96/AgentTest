@@ -1,5 +1,5 @@
 """数据库模型和操作"""
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, func
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, func, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timedelta
@@ -91,7 +91,8 @@ class Database:
     def get_high_confidence_articles(
         self, 
         limit: int = 50,
-        min_score: Optional[float] = None
+        min_score: Optional[float] = None,
+        keywords: Optional[List[str]] = None
     ) -> List[Article]:
         """获取高置信度文章"""
         session = self.get_session()
@@ -100,21 +101,32 @@ class Database:
             
             if min_score:
                 query = query.filter(Article.confidence_score >= min_score)
+
+            if keywords:
+                query = self._apply_keyword_filter(query, keywords)
             
             return query.order_by(Article.confidence_score.desc(), Article.published_at.desc()).limit(limit).all()
         finally:
             session.close()
     
-    def get_recent_articles(self, hours: int = 24, limit: int = 100) -> List[Article]:
+    def get_recent_articles(
+        self,
+        hours: int = 24,
+        limit: int = 100,
+        keywords: Optional[List[str]] = None
+    ) -> List[Article]:
         """获取最近的文章"""
         session = self.get_session()
         try:
             cutoff_time = datetime.utcnow() - timedelta(hours=hours)
-            return session.query(Article)\
+            query = session.query(Article)\
                 .filter(Article.published_at >= cutoff_time)\
-                .order_by(Article.published_at.desc())\
-                .limit(limit)\
-                .all()
+                .order_by(Article.published_at.desc())
+
+            if keywords:
+                query = self._apply_keyword_filter(query, keywords)
+
+            return query.limit(limit).all()
         finally:
             session.close()
     
@@ -208,6 +220,21 @@ class Database:
             print(f"更新关键词使用次数时出错: {e}")
         finally:
             session.close()
+
+    def _apply_keyword_filter(self, query, keywords: List[str]):
+        """为文章查询应用关键词过滤"""
+        keyword_filters = []
+        for keyword in keywords:
+            if not keyword:
+                continue
+            like_pattern = f"%{keyword}%"
+            keyword_filters.append(Article.title.ilike(like_pattern))
+            keyword_filters.append(Article.content.ilike(like_pattern))
+            keyword_filters.append(Article.keywords.ilike(like_pattern))
+
+        if keyword_filters:
+            query = query.filter(or_(*keyword_filters))
+        return query
 
 
 # 全局数据库实例
