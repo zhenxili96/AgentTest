@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>白银投资关键词挖掘系统</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔍 白银投资关键词挖掘系统</h1>
+            <p class="subtitle">实时从市场挖掘能引发白银价格波动的关键词</p>
+            <div id="ai-config-info" class="ai-config-info">
+                <div class="ai-config-item">
+                    <span class="ai-config-label">AI API来源：</span>
+                    <span class="ai-config-value" id="ai-api-source">加载中...</span>
+                </div>
+                <div class="ai-config-item">
+                    <span class="ai-config-label">AI模型：</span>
+                    <span class="ai-config-value" id="ai-model">加载中...</span>
+                </div>
+            </div>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="workflow">工作流程</button>
+            <button class="tab-btn" data-tab="articles">实时发现</button>
+            <button class="tab-btn" data-tab="mine">关键词挖掘</button>
+            <button class="tab-btn" data-tab="keywords">已挖掘关键词</button>
+            <button class="tab-btn" data-tab="analyze">关键词分析</button>
+            <button class="tab-btn" data-tab="stats">统计数据</button>
+        </nav>
+
+        <!-- 工作流程图标签页 -->
+        <div class="tab-content active" id="workflow-tab">
+            <div class="card">
+                <h2>系统工作流程图</h2>
+                <p class="workflow-subtitle">实时监控系统工作状态</p>
+                <div class="workflow-container">
+                    <div class="workflow-step" id="step-1">
+                        <div class="step-icon">
+                            <div class="step-number">1</div>
+                            <div class="step-status-indicator" id="status-1"></div>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-header">
+                                <div>
+                                    <h3>主题设定</h3>
+                                    <p class="step-description">围绕<span class="highlight">白银投资</span>主题进行关键词挖掘</p>
+                                </div>
+                                <button class="btn-toggle-details" onclick="toggleStepDetails(1)" data-step="1">
+                                    <span class="toggle-text">查看详情</span>
+                                    <span class="toggle-icon">▼</span>
+                                </button>
+                            </div>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">当前主题：</span>
+                                    <span class="detail-value">白银投资</span>
+                                </div>
+                            </div>
+                            <div class="step-detail-content" id="step-1-details" style="display: none;">
+                                <div class="detail-content-inner">
+                                    <h4>主题说明</h4>
+                                    <p>系统专注于挖掘与白银投资相关的关键词，包括：</p>
+                                    <ul>
+                                        <li><strong>核心主题</strong>：白银、银价、白银期货</li>
+                                        <li><strong>上游因素</strong>：矿业、矿产、开采、供应</li>
+                                        <li><strong>下游应用</strong>：工业应用、电子产品、太阳能、医疗、珠宝</li>
+                                        <li><strong>宏观经济</strong>：通胀、货币政策、美元、利率、经济数据</li>
+                                        <li><strong>市场因素</strong>：期货、COMEX、持仓、库存、价格走势</li>
+                                        <li><strong>相关商品</strong>：黄金、贵金属、铜等工业金属</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="workflow-arrow">↓</div>
+                    
+                    <div class="workflow-step" id="step-2">
+                        <div class="step-icon">
+                            <div class="step-number">2</div>
+                            <div class="step-status-indicator" id="status-2"></div>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-header">
+                                <div>
+                                    <h3>关键词挖掘</h3>
+                                    <p class="step-description">从高置信度文章或市场趋势中挖掘关键词</p>
+                                </div>
+                                <button class="btn-toggle-details" onclick="toggleStepDetails(2)" data-step="2">
+                                    <span class="toggle-text">查看详情</span>
+                                    <span class="toggle-icon">▼</span>
+                                </button>
+                            </div>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">关键词数量：</span>
+                                    <span class="detail-value" id="keyword-count">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">活跃关键词：</span>
+                                    <span class="detail-value" id="active-keyword-count">-</span>
+                                </div>
+                            </div>
+                            <div class="step-detail-content" id="step-2-details" style="display: none;">
+                                <div class="detail-content-inner">
+                                    <h4>关键词列表</h4>
+                                    <div id="keywords-list-detail" class="keywords-detail-list">
+                                        <div class="loading">加载中...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="workflow-arrow">↓</div>
+                    
+                    <div class="workflow-step" id="step-3">
+                        <div class="step-icon">
+                            <div class="step-number">3</div>
+                            <div class="step-status-indicator" id="status-3"></div>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-header">
+                                <div>
+                                    <h3>网络信息检索</h3>
+                                    <p class="step-description">使用关键词列表进行网络信息检索</p>
+                                </div>
+                                <button class="btn-toggle-details" onclick="toggleStepDetails(3)" data-step="3">
+                                    <span class="toggle-text">查看详情</span>
+                                    <span class="toggle-icon">▼</span>
+                                </button>
+                            </div>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">检索间隔：</span>
+                                    <span class="detail-value" id="search-interval">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">检索数量：</span>
+                                    <span class="detail-value" id="search-count">-</span>
+                                </div>
+                            </div>
+                            <div class="step-detail-content" id="step-3-details" style="display: none;">
+                                <div class="detail-content-inner">
+                                    <h4>检索配置</h4>
+                                    <div id="search-config-detail" class="config-detail">
+                                        <div class="config-item">
+                                            <span class="config-label">数据源：</span>
+                                            <span class="config-value" id="search-sources">NewsAPI, RSS源</span>
+                                        </div>
+                                        <div class="config-item">
+                                            <span class="config-label">最低置信度阈值：</span>
+                                            <span class="config-value" id="min-confidence-threshold">-</span>
+                                        </div>
+                                        <div class="config-item">
+                                            <span class="config-label">检索状态：</span>
+                                            <span class="config-value">自动运行中</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="workflow-arrow">↓</div>
+                    
+                    <div class="workflow-step" id="step-4">
+                        <div class="step-icon">
+                            <div class="step-number">4</div>
+                            <div class="step-status-indicator" id="status-4"></div>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-header">
+                                <div>
+                                    <h3>信息评估</h3>
+                                    <p class="step-description">评估检索到的信息与白银投资的相关性和置信度</p>
+                                </div>
+                                <button class="btn-toggle-details" onclick="toggleStepDetails(4)" data-step="4">
+                                    <span class="toggle-text">查看详情</span>
+                                    <span class="toggle-icon">▼</span>
+                                </button>
+                            </div>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">总文章数：</span>
+                                    <span class="detail-value" id="total-articles">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">高置信度文章：</span>
+                                    <span class="detail-value" id="high-confidence-articles">-</span>
+                                </div>
+                            </div>
+                            <div class="step-detail-content" id="step-4-details" style="display: none;">
+                                <div class="detail-content-inner">
+                                    <h4>评估统计</h4>
+                                    <div id="evaluation-stats-detail" class="evaluation-stats">
+                                        <div class="stat-row">
+                                            <span class="stat-label">平均置信度：</span>
+                                            <span class="stat-value" id="detail-avg-confidence">-</span>
+                                        </div>
+                                        <div class="stat-row">
+                                            <span class="stat-label">高置信度比例：</span>
+                                            <span class="stat-value" id="high-confidence-ratio">-</span>
+                                        </div>
+                                        <div class="stat-row">
+                                            <span class="stat-label">评估标准：</span>
+                                            <span class="stat-value">相关性、可靠性、时效性</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="workflow-arrow">↓</div>
+                    
+                    <div class="workflow-step" id="step-5">
+                        <div class="step-icon">
+                            <div class="step-number">5</div>
+                            <div class="step-status-indicator" id="status-5"></div>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-header">
+                                <div>
+                                    <h3>涨跌概率分析</h3>
+                                    <p class="step-description">根据现有信息判断<span class="highlight">白银</span>的涨跌概率并作出简要分析</p>
+                                </div>
+                                <button class="btn-toggle-details" onclick="toggleStepDetails(5)" data-step="5">
+                                    <span class="toggle-text">查看详情</span>
+                                    <span class="toggle-icon">▼</span>
+                                </button>
+                            </div>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">上涨概率：</span>
+                                    <span class="detail-value" id="up-probability">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">下跌概率：</span>
+                                    <span class="detail-value" id="down-probability">-</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">中性概率：</span>
+                                    <span class="detail-value" id="neutral-probability">-</span>
+                                </div>
+                            </div>
+                            <div class="step-detail-content" id="step-5-details" style="display: none;">
+                                <div class="detail-content-inner">
+                                    <h4>详细分析</h4>
+                                    <div id="price-trend-analysis" class="price-trend-analysis">
+                                        <div class="loading">分析中...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="workflow-arrow">↓</div>
+                    
+                    <div class="workflow-step" id="step-6">
+                        <div class="step-icon">
+                            <div class="step-number">6</div>
+                            <div class="step-status-indicator" id="status-6"></div>
+                        </div>
+                        <div class="step-content">
+                            <div class="step-header">
+                                <div>
+                                    <h3>结果展示</h3>
+                                    <p class="step-description">展示高置信度的信息，用于投资决策参考</p>
+                                </div>
+                                <button class="btn-toggle-details" onclick="toggleStepDetails(6)" data-step="6">
+                                    <span class="toggle-text">查看详情</span>
+                                    <span class="toggle-icon">▼</span>
+                                </button>
+                            </div>
+                            <div class="step-details">
+                                <div class="detail-item">
+                                    <span class="detail-label">平均置信度：</span>
+                                    <span class="detail-value" id="avg-confidence">-</span>
+                                </div>
+                            </div>
+                            <div class="step-detail-content" id="step-6-details" style="display: none;">
+                                <div class="detail-content-inner">
+                                    <h4>高置信度文章列表</h4>
+                                    <div id="articles-list-detail" class="articles-detail-list">
+                                        <div class="loading">加载中...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style="margin-top: 30px; text-align: center;">
+                    <button class="btn btn-secondary" onclick="refreshWorkflow()">刷新状态</button>
+                    <label style="display: inline-flex; align-items: center; margin-left: 20px; gap: 5px;">
+                        <input type="checkbox" id="workflow-auto-refresh" checked>
+                        <span>自动刷新（10秒）</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- 实时发现标签页 -->
+        <div class="tab-content" id="articles-tab">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>实时发现的高置信度信息</h2>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <label style="display: flex; align-items: center; gap: 5px; font-size: 14px;">
+                            <input type="checkbox" id="auto-refresh" checked>
+                            <span>自动刷新（30秒）</span>
+                        </label>
+                        <button class="btn btn-secondary" onclick="loadArticles()" style="padding: 8px 16px;">手动刷新</button>
+                    </div>
+                </div>
+                <div class="filter-bar">
+                    <div class="form-group-inline">
+                        <label for="articles-limit">显示数量：</label>
+                        <input type="number" id="articles-limit" value="20" min="1" max="100" style="width: 80px;">
+                    </div>
+                    <div class="form-group-inline">
+                        <label for="articles-min-score">最低置信度：</label>
+                        <input type="number" id="articles-min-score" value="0.7" min="0" max="1" step="0.1" style="width: 80px;">
+                    </div>
+                </div>
+                <div id="articles-list" class="articles-list"></div>
+            </div>
+        </div>
+
+        <!-- 关键词挖掘标签页 -->
+        <div class="tab-content" id="mine-tab">
+            <div class="card">
+                <h2>挖掘关键词</h2>
+                <div class="form-group">
+                    <label for="source-type">数据源类型：</label>
+                    <select id="source-type">
+                        <option value="articles">从高置信度文章挖掘</option>
+                        <option value="trends">从市场趋势挖掘</option>
+                    </select>
+                </div>
+                <div class="form-group" id="articles-options">
+                    <label for="hours">分析时间范围（小时）：</label>
+                    <input type="number" id="hours" value="48" min="1" max="168">
+                </div>
+                <div class="form-group" id="articles-options">
+                    <label for="min-confidence">最低置信度：</label>
+                    <input type="number" id="min-confidence" value="0.7" min="0" max="1" step="0.1">
+                </div>
+                <div class="form-group" id="articles-options">
+                    <label for="limit">文章数量限制：</label>
+                    <input type="number" id="limit" value="50" min="1" max="200">
+                </div>
+                <div class="form-group" id="trends-options" style="display: none;">
+                    <label for="market-context">市场上下文（可选）：</label>
+                    <textarea id="market-context" rows="3" placeholder="输入当前市场热点和趋势信息..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="mineKeywords()">开始挖掘</button>
+                <div id="mine-result" class="result-area"></div>
+            </div>
+        </div>
+
+        <!-- 已挖掘关键词标签页 -->
+        <div class="tab-content" id="keywords-tab">
+            <div class="card">
+                <h2>已挖掘关键词</h2>
+                <div class="filter-bar">
+                    <div class="form-group-inline">
+                        <label for="filter-active">只显示活跃：</label>
+                        <select id="filter-active">
+                            <option value="">全部</option>
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                        </select>
+                    </div>
+                    <div class="form-group-inline">
+                        <label for="filter-relevance">最低相关性：</label>
+                        <input type="number" id="filter-relevance" value="0.6" min="0" max="1" step="0.1">
+                    </div>
+                    <div class="form-group-inline">
+                        <label for="filter-limit">数量限制：</label>
+                        <input type="number" id="filter-limit" value="100" min="1" max="500">
+                    </div>
+                    <button class="btn btn-secondary" onclick="loadKeywords()">刷新</button>
+                </div>
+                <div id="keywords-list" class="keywords-list"></div>
+            </div>
+        </div>
+
+        <!-- 关键词分析标签页 -->
+        <div class="tab-content" id="analyze-tab">
+            <div class="card">
+                <h2>分析关键词相关性</h2>
+                <div class="form-group">
+                    <label for="analyze-keyword">关键词：</label>
+                    <input type="text" id="analyze-keyword" placeholder="输入要分析的关键词，例如：美联储加息">
+                </div>
+                <div class="form-group">
+                    <label for="analyze-context">上下文（可选）：</label>
+                    <textarea id="analyze-context" rows="4" placeholder="输入相关的上下文信息..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="analyzeKeyword()">分析</button>
+                <div id="analyze-result" class="result-area"></div>
+            </div>
+        </div>
+
+        <!-- 统计数据标签页 -->
+        <div class="tab-content" id="stats-tab">
+            <div class="card">
+                <h2>统计数据</h2>
+                <div id="stats-content" class="stats-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

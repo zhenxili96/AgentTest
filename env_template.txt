@@ -1,0 +1,35 @@
+# 请将此文件重命名为 .env 并填入您的API密钥
+
+# AI API配置（二选一，用于AI置信度评估）
+# 选项1：使用OpenRouter（推荐，更便宜，有免费选项）
+# 获取地址：https://openrouter.ai/keys
+OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
+
+# 选项2：使用OpenAI
+# 获取地址：https://platform.openai.com/api-keys
+# OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# AI服务提供商选择（可选，默认优先OpenRouter）
+# AI_PROVIDER=openrouter  # 或 openai
+
+# NewsAPI配置（可选）- 用于新闻搜索
+# 如果无法访问NewsAPI，可以不配置，程序会使用RSS源
+# 获取地址：https://newsapi.org/（可能需要代理访问）
+NEWS_API_KEY=your-newsapi-key-here
+
+# Alpha Vantage配置（可选）- 用于金融数据
+# 获取地址：https://www.alphavantage.co/support/#api-key
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key_here
+
+# 数据库配置（可选，默认使用SQLite）
+DATABASE_URL=sqlite:///silver_investment.db
+
+# 搜索配置（可选）
+SEARCH_INTERVAL_MINUTES=30
+MAX_ARTICLES_PER_SEARCH=50
+MIN_CONFIDENCE_SCORE=0.7
+
+# 搜索关键词（可选，用逗号分隔）
+# 包括：核心关键词、上游（矿业/供应）、下游（工业应用）、宏观经济、市场因素、相关商品
+# 默认已包含白银期货投资相关的上下游和关联因素
+SEARCH_KEYWORDS=白银,silver,银价,白银期货,precious metals,贵金属,mining,矿业,commodities,商品,industrial demand,工业需求,inflation,通胀,monetary policy,货币政策,dollar,美元,futures,期货,COMEX,gold,黄金,copper,铜,industrial metals,工业金属,supply chain,供应链,demand,需求
