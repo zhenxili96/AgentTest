@@ -9,6 +9,7 @@
 - ⏰ **实时监控**：自动定期搜索最新信息
 - 💾 **数据存储**：持久化存储搜索结果和分析
 - 📊 **数据可视化**：提供API接口查看和分析数据
+- 📈 **股市行情辅助**：获取股市行情快照，用于辅助分析
 
 ## 安装
 
@@ -28,6 +29,8 @@ cp .env.example .env
 
 - `OPENAI_API_KEY`: OpenAI API密钥（必须，用于置信度评估）
 - `NEWS_API_KEY`: NewsAPI密钥（可选，如果无法访问可以不配置，程序会使用RSS源）
+- `ALPHA_VANTAGE_API_KEY`: Alpha Vantage API密钥（可选，用于股市行情数据）
+- `STOCK_SYMBOLS`: 股市代码列表（可选，用逗号分隔，如 SPY,QQQ,DIA）
 - `SEARCH_INTERVAL_MINUTES`: 搜索间隔（分钟）
 - `MIN_CONFIDENCE_SCORE`: 最小置信度分数阈值（0-1）
 
@@ -84,6 +87,11 @@ GET /api/stats
 #### 4. 手动触发搜索
 ```
 POST /api/search
+```
+
+#### 5. 获取股市行情
+```
+GET /api/market/stock?symbols=SPY,QQQ,DIA
 ```
 
 ### 方式3：使用示例脚本

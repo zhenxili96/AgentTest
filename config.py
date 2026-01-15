@@ -23,6 +23,16 @@ class Config:
     
     # Alpha Vantage配置（可选）
     ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
+
+    # 默认关注的股市代码（可通过环境变量覆盖）
+    STOCK_SYMBOLS: List[str] = [
+        symbol.strip().upper()
+        for symbol in os.getenv(
+            "STOCK_SYMBOLS",
+            "SPY,QQQ,DIA"
+        ).split(",")
+        if symbol.strip()
+    ]
     
     # 数据库配置
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///silver_investment.db")

@@ -51,6 +51,37 @@ class SearchEngine:
                 seen.add(kw)
                 deduped.append(kw)
         return deduped
+
+    def _normalize_symbols(
+        self,
+        symbols: Optional[Union[List[str], str]] = None
+    ) -> List[str]:
+        """标准化股票代码列表"""
+        normalized: List[str] = []
+
+        if isinstance(symbols, str):
+            normalized.extend([
+                symbol.strip().upper()
+                for symbol in symbols.replace("，", ",").split(",")
+                if symbol.strip()
+            ])
+        elif isinstance(symbols, list):
+            normalized.extend([
+                str(symbol).strip().upper()
+                for symbol in symbols
+                if str(symbol).strip()
+            ])
+
+        if not normalized:
+            normalized = list(Config.STOCK_SYMBOLS)
+
+        seen = set()
+        deduped = []
+        for symbol in normalized:
+            if symbol not in seen:
+                seen.add(symbol)
+                deduped.append(symbol)
+        return deduped
     
     def search_newsapi(
         self,
@@ -214,6 +245,88 @@ class SearchEngine:
                 unique_articles.append(article)
         
         return unique_articles[:max_results]
+
+    def fetch_stock_market_info(
+        self,
+        symbols: Optional[Union[List[str], str]] = None
+    ) -> Dict:
+        """获取股市行情信息（基于Alpha Vantage）"""
+        if not Config.ALPHA_VANTAGE_API_KEY:
+            return {
+                "success": False,
+                "error": "ALPHA_VANTAGE_API_KEY 未配置",
+                "quotes": [],
+                "requested_symbols": self._normalize_symbols(symbols),
+            }
+
+        active_symbols = self._normalize_symbols(symbols)
+        quotes = []
+        errors = []
+
+        for symbol in active_symbols:
+            try:
+                url = "https://www.alphavantage.co/query"
+                params = {
+                    "function": "GLOBAL_QUOTE",
+                    "symbol": symbol,
+                    "apikey": Config.ALPHA_VANTAGE_API_KEY,
+                }
+                headers = {"User-Agent": self.user_agent}
+                response = requests.get(url, params=params, headers=headers, timeout=10)
+                response.raise_for_status()
+                data = response.json()
+
+                if "Note" in data:
+                    errors.append({"symbol": symbol, "error": data.get("Note")})
+                    continue
+
+                quote = data.get("Global Quote", {}) or {}
+                if not quote:
+                    errors.append({"symbol": symbol, "error": "未返回有效行情数据"})
+                    continue
+
+                quotes.append({
+                    "symbol": quote.get("01. symbol", symbol),
+                    "price": self._safe_float(quote.get("05. price")),
+                    "change": self._safe_float(quote.get("09. change")),
+                    "change_percent": quote.get("10. change percent", ""),
+                    "latest_trading_day": quote.get("07. latest trading day", ""),
+                    "source": "Alpha Vantage",
+                })
+            except Exception as e:
+                errors.append({"symbol": symbol, "error": str(e)})
+
+        return {
+            "success": len(quotes) > 0,
+            "quotes": quotes,
+            "errors": errors,
+            "requested_symbols": active_symbols,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+
+    def build_stock_market_context(self, stock_data: Dict) -> str:
+        """将股市行情转换为分析上下文文本"""
+        if not stock_data or not stock_data.get("quotes"):
+            return ""
+
+        lines = ["股市行情快照（Alpha Vantage）："]
+        for quote in stock_data.get("quotes", []):
+            symbol = quote.get("symbol", "")
+            price = quote.get("price")
+            change = quote.get("change")
+            change_percent = quote.get("change_percent", "")
+            latest_day = quote.get("latest_trading_day", "")
+            price_text = f"{price}" if price is not None else "N/A"
+            change_text = f"{change}" if change is not None else "N/A"
+            lines.append(
+                f"- {symbol}: {price_text} ({change_text} / {change_percent}) "
+                f"最新交易日: {latest_day}"
+            )
+
+        if stock_data.get("errors"):
+            lines.append("注意：部分行情获取失败，可能因频率限制或代码无效。")
+
+        return "\n".join(lines)
     
     def _parse_date(self, date_str: Optional[str]) -> datetime:
         """解析日期字符串"""
@@ -236,3 +349,11 @@ class SearchEngine:
         
         # 如果都失败了，返回当前时间
         return datetime.utcnow()
+
+    @staticmethod
+    def _safe_float(value: Optional[str]) -> Optional[float]:
+        """安全解析浮点数"""
+        try:
+            return float(value) if value not in (None, "") else None
+        except (TypeError, ValueError):
+            return None
