@@ -26,6 +26,7 @@
         <nav class="tabs">
             <button class="tab-btn active" data-tab="workflow">工作流程</button>
             <button class="tab-btn" data-tab="articles">实时发现</button>
+            <button class="tab-btn" data-tab="stocks">相关股票</button>
             <button class="tab-btn" data-tab="mine">关键词挖掘</button>
             <button class="tab-btn" data-tab="keywords">已挖掘关键词</button>
             <button class="tab-btn" data-tab="analyze">关键词分析</button>
@@ -404,6 +405,35 @@
                 </div>
                 <button class="btn btn-primary" onclick="analyzeKeyword()">分析</button>
                 <div id="analyze-result" class="result-area"></div>
+            </div>
+        </div>
+
+        <!-- 相关股票标签页 -->
+        <div class="tab-content" id="stocks-tab">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>相关股票</h2>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <button class="btn btn-secondary" onclick="identifyStocks()" style="padding: 8px 16px;">识别股票</button>
+                        <button class="btn btn-secondary" onclick="updateStockPrices()" style="padding: 8px 16px;">更新价格</button>
+                        <button class="btn btn-secondary" onclick="loadStocks()" style="padding: 8px 16px;">刷新</button>
+                    </div>
+                </div>
+                <div class="filter-bar">
+                    <div class="form-group-inline">
+                        <label for="stocks-active">只显示活跃：</label>
+                        <select id="stocks-active">
+                            <option value="">全部</option>
+                            <option value="true">是</option>
+                            <option value="false">否</option>
+                        </select>
+                    </div>
+                    <div class="form-group-inline">
+                        <label for="stocks-limit">数量限制：</label>
+                        <input type="number" id="stocks-limit" value="50" min="1" max="200">
+                    </div>
+                </div>
+                <div id="stocks-list" class="stocks-list"></div>
             </div>
         </div>
 

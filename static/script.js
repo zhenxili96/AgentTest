@@ -23,6 +23,8 @@ function switchTab(tabId) {
         loadArticles();
     } else if (tabId === 'keywords') {
         loadKeywords();
+    } else if (tabId === 'stocks') {
+        loadStocks();
     } else if (tabId === 'stats') {
         loadStats();
     } else if (tabId === 'workflow') {
@@ -701,6 +703,308 @@ function setupAutoRefresh() {
             }
         }, 30000); // 30秒刷新一次
     }
+}
+
+// 加载股票列表
+async function loadStocks() {
+    const stocksList = document.getElementById('stocks-list');
+    stocksList.innerHTML = '<div class="loading">加载中</div>';
+    
+    const active = document.getElementById('stocks-active').value;
+    const limit = parseInt(document.getElementById('stocks-limit').value) || 50;
+    
+    const params = new URLSearchParams();
+    if (active) params.append('active', active);
+    if (limit) params.append('limit', limit);
+    
+    try {
+        const response = await fetch(`${API_BASE}/stocks/identified?${params.toString()}`);
+        const result = await response.json();
+        
+        if (result.success) {
+            if (result.stocks.length === 0) {
+                stocksList.innerHTML = '<div class="result-area" style="display: block; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404;">暂无识别的股票，点击"识别股票"按钮开始识别</div>';
+                return;
+            }
+            
+            // 为每个股票获取最新价格
+            const stocksWithPrices = await Promise.all(
+                result.stocks.map(async (stock) => {
+                    try {
+                        const priceResponse = await fetch(`${API_BASE}/stocks/${stock.symbol}/price`);
+                        const priceResult = await priceResponse.json();
+                        return {
+                            ...stock,
+                            current_price: priceResult.success ? priceResult.price : null
+                        };
+                    } catch (e) {
+                        return { ...stock, current_price: null };
+                    }
+                })
+            );
+            
+            stocksList.innerHTML = stocksWithPrices.map(stock => `
+                <div class="stock-item">
+                    <div class="stock-header">
+                        <div class="stock-symbol-info">
+                            <span class="stock-symbol">${escapeHtml(stock.symbol)}</span>
+                            ${stock.company_name ? `<span class="stock-company">${escapeHtml(stock.company_name)}</span>` : ''}
+                        </div>
+                        ${stock.current_price ? `
+                            <div class="stock-price-info">
+                                <span class="stock-price">$${stock.current_price.price?.toFixed(2) || 'N/A'}</span>
+                                ${stock.current_price.change !== null ? `
+                                    <span class="stock-change ${stock.current_price.change >= 0 ? 'positive' : 'negative'}">
+                                        ${stock.current_price.change >= 0 ? '+' : ''}${stock.current_price.change?.toFixed(2) || '0.00'} 
+                                        (${stock.current_price.change_percent >= 0 ? '+' : ''}${stock.current_price.change_percent?.toFixed(2) || '0.00'}%)
+                                    </span>
+                                ` : ''}
+                            </div>
+                        ` : '<div class="stock-price-info"><span class="stock-price">价格加载中...</span></div>'}
+                    </div>
+                    <div class="stock-meta">
+                        ${stock.relevance ? `<span><strong>相关性：</strong>${escapeHtml(stock.relevance)}</span>` : ''}
+                        <span><strong>识别时间：</strong>${formatDate(stock.identified_at)}</span>
+                        <span><strong>状态：</strong>${stock.is_active ? '✅ 活跃' : '❌ 非活跃'}</span>
+                    </div>
+                    <div class="stock-actions">
+                        <button class="btn btn-small" onclick="showStockChart('${escapeHtml(stock.symbol)}')">查看走势</button>
+                        <button class="btn btn-small" onclick="updateStockPrice('${escapeHtml(stock.symbol)}')">更新价格</button>
+                    </div>
+                </div>
+            `).join('');
+        } else {
+            throw new Error(result.error || '加载失败');
+        }
+    } catch (error) {
+        stocksList.innerHTML = `<div class="result-area error" style="display: block;">
+            <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
+        </div>`;
+    }
+}
+
+// 识别股票
+async function identifyStocks() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '识别中...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/stocks/identify`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                source: 'keywords'  // 或 'articles'
+            }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`识别成功！共识别 ${result.identified} 只股票，保存了 ${result.saved} 只`);
+            loadStocks();
+        } else {
+            throw new Error(result.error || '识别失败');
+        }
+    } catch (error) {
+        alert(`识别失败: ${escapeHtml(error.message)}`);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '识别股票';
+    }
+}
+
+// 更新股票价格
+async function updateStockPrices() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '更新中...';
+    
+    try {
+        const response = await fetch(`${API_BASE}/stocks/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({}),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`更新成功！更新了 ${result.updated} / ${result.total} 只股票的价格`);
+            loadStocks();
+        } else {
+            throw new Error(result.error || '更新失败');
+        }
+    } catch (error) {
+        alert(`更新失败: ${escapeHtml(error.message)}`);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '更新价格';
+    }
+}
+
+// 更新单个股票价格
+async function updateStockPrice(symbol) {
+    try {
+        const response = await fetch(`${API_BASE}/stocks/update`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                symbols: symbol
+            }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            loadStocks();
+        } else {
+            throw new Error(result.error || '更新失败');
+        }
+    } catch (error) {
+        alert(`更新失败: ${escapeHtml(error.message)}`);
+    }
+}
+
+// 显示股票走势图
+async function showStockChart(symbol) {
+    // 创建模态窗口显示走势图
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>${symbol} 走势图</h3>
+                <button class="modal-close" onclick="this.closest('.modal').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="chart-container" style="width: 100%; height: 400px;">
+                    <div class="loading">加载走势数据中...</div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    try {
+        // 获取走势数据
+        const response = await fetch(`${API_BASE}/stocks/${symbol}/chart?type=daily&days=30`);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+            // 使用简单的Canvas绘制走势图
+            drawStockChart(result.data, symbol);
+        } else {
+            document.getElementById('chart-container').innerHTML = 
+                `<div class="result-area error" style="display: block;">无法加载走势数据</div>`;
+        }
+    } catch (error) {
+        document.getElementById('chart-container').innerHTML = 
+            `<div class="result-area error" style="display: block;">加载失败: ${escapeHtml(error.message)}</div>`;
+    }
+}
+
+// 绘制股票走势图
+function drawStockChart(data, symbol) {
+    const container = document.getElementById('chart-container');
+    container.innerHTML = `<canvas id="stock-chart-canvas" width="850" height="400"></canvas>`;
+    
+    const canvas = document.getElementById('stock-chart-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!data || data.length === 0) {
+        ctx.fillStyle = '#666';
+        ctx.font = '16px Arial';
+        ctx.fillText('暂无数据', 400, 200);
+        return;
+    }
+    
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = 40;
+    const chartWidth = width - padding * 2;
+    const chartHeight = height - padding * 2;
+    
+    // 计算价格范围
+    const prices = data.map(d => d.close).filter(p => p !== null);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const priceRange = maxPrice - minPrice || 1;
+    
+    // 绘制背景
+    ctx.fillStyle = '#f5f5f5';
+    ctx.fillRect(0, 0, width, height);
+    
+    // 绘制网格线
+    ctx.strokeStyle = '#ddd';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 5; i++) {
+        const y = padding + (chartHeight / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding, y);
+        ctx.lineTo(width - padding, y);
+        ctx.stroke();
+    }
+    
+    // 绘制价格线
+    ctx.strokeStyle = '#667eea';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    
+    data.forEach((point, index) => {
+        const x = padding + (chartWidth / (data.length - 1)) * index;
+        const y = padding + chartHeight - ((point.close - minPrice) / priceRange) * chartHeight;
+        
+        if (index === 0) {
+            ctx.moveTo(x, y);
+        } else {
+            ctx.lineTo(x, y);
+        }
+    });
+    ctx.stroke();
+    
+    // 绘制数据点
+    ctx.fillStyle = '#667eea';
+    data.forEach((point, index) => {
+        const x = padding + (chartWidth / (data.length - 1)) * index;
+        const y = padding + chartHeight - ((point.close - minPrice) / priceRange) * chartHeight;
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fill();
+    });
+    
+    // 绘制标签
+    ctx.fillStyle = '#333';
+    ctx.font = '12px Arial';
+    
+    // Y轴标签（价格）
+    for (let i = 0; i <= 5; i++) {
+        const price = maxPrice - (priceRange / 5) * i;
+        const y = padding + (chartHeight / 5) * i;
+        ctx.fillText(`$${price.toFixed(2)}`, 5, y + 4);
+    }
+    
+    // X轴标签（日期）
+    const labelCount = Math.min(5, data.length);
+    for (let i = 0; i < labelCount; i++) {
+        const index = Math.floor((data.length - 1) / (labelCount - 1)) * i;
+        if (index < data.length) {
+            const x = padding + (chartWidth / (data.length - 1)) * index;
+            const date = new Date(data[index].timestamp);
+            const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+            ctx.fillText(dateStr, x - 15, height - 10);
+        }
+    }
+    
+    // 标题
+    ctx.font = 'bold 16px Arial';
+    ctx.fillText(`${symbol} 价格走势 (30天)`, padding, 25);
 }
 
 // 加载AI配置信息

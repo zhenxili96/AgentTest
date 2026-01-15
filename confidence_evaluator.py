@@ -1,21 +1,38 @@
 """AI置信度评估模块"""
 from openai import OpenAI
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from config import Config
 
 
 class ConfidenceEvaluator:
-    """使用AI模型评估信息的置信度（支持OpenAI和OpenRouter）"""
+    """使用AI模型评估信息的置信度（支持OpenAI、OpenRouter和Bltcy）"""
     
     def __init__(self):
-        # 优先使用OpenRouter（如果配置了），否则使用OpenAI
+        # 优先级：bltcy > openrouter > openai
         self.provider = Config.AI_PROVIDER
         self.api_key = None
         self.base_url = None
         self.model = "gpt-4o-mini"  # 默认模型
         
         # 定义备用模型列表（按优先级排序）
-        if self.provider == "openrouter" and Config.OPENROUTER_API_KEY:
+        if self.provider == "bltcy" and Config.BLTCY_API_KEY:
+            self.api_key = Config.BLTCY_API_KEY
+            self.base_url = "https://api.bltcy.ai/v1"
+            # Bltcy备用模型列表（如果主模型不可用，会依次尝试）
+            # Bltcy支持多种模型，格式通常为：gpt-4o-mini, gpt-3.5-turbo, claude-3-haiku等
+            self.fallback_models = [
+                "gpt-4o-mini",
+                "gpt-3.5-turbo",
+                "gpt-4-mini",
+                "claude-3-haiku",
+            ]
+            # 如果配置了自定义模型，优先使用
+            if Config.AI_MODEL:
+                self.model = Config.AI_MODEL
+            else:
+                self.model = self.fallback_models[0]
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        elif self.provider == "openrouter" and Config.OPENROUTER_API_KEY:
             self.api_key = Config.OPENROUTER_API_KEY
             self.base_url = "https://openrouter.ai/api/v1"
             # OpenRouter备用模型列表（如果主模型不可用，会依次尝试）
@@ -54,6 +71,92 @@ class ConfidenceEvaluator:
         
         self.min_confidence = Config.MIN_CONFIDENCE_SCORE
 
+    def test_connection(self) -> Tuple[bool, str]:
+        """
+        测试AI API连接是否可用
+        
+        Returns:
+            tuple[bool, str]: (是否成功, 消息)
+        """
+        if not self.client:
+            provider_names = {
+                "bltcy": "Bltcy",
+                "openrouter": "OpenRouter",
+                "openai": "OpenAI"
+            }
+            provider_name = provider_names.get(self.provider, "AI")
+            return False, f"未配置{provider_name} API，无法进行连接测试"
+        
+        try:
+            # 尝试发送一个简单的测试请求
+            # 使用最小的提示来测试连接
+            test_prompt = "测试"
+            
+            # 尝试使用主模型
+            models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+            last_error = None
+            
+            for model_to_try in models_to_try[:2]:  # 只尝试前两个模型，避免耗时过长
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_to_try,
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": test_prompt
+                            }
+                        ],
+                        temperature=0.1,
+                        max_tokens=10,
+                    )
+                    
+                    # 如果成功，更新当前使用的模型
+                    if model_to_try != self.model:
+                        print(f"连接测试：模型 {self.model} 不可用，已切换到 {model_to_try}")
+                        self.model = model_to_try
+                    
+                    provider_names = {
+                        "bltcy": "Bltcy（柏拉图AI）",
+                        "openrouter": "OpenRouter",
+                        "openai": "OpenAI"
+                    }
+                    provider_name = provider_names.get(self.provider, "AI")
+                    base_url_info = f" ({self.base_url})" if self.base_url else ""
+                    return True, f"{provider_name} API 连接成功{base_url_info}，使用模型: {self.model}"
+                    
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e)
+                    # 如果是403错误（模型不可用），尝试下一个模型
+                    if "403" in error_str or "not available" in error_str.lower() or "region" in error_str.lower():
+                        continue
+                    # 其他错误直接抛出
+                    raise
+            
+            # 所有模型都失败了
+            raise last_error if last_error else Exception("所有模型都不可用")
+            
+        except Exception as e:
+            error_msg = str(e)
+            provider_names = {
+                "bltcy": "Bltcy（柏拉图AI）",
+                "openrouter": "OpenRouter",
+                "openai": "OpenAI"
+            }
+            provider_name = provider_names.get(self.provider, "AI")
+            
+            # 提供更友好的错误信息
+            if "401" in error_msg or "unauthorized" in error_msg.lower() or "invalid" in error_msg.lower():
+                return False, f"{provider_name} API 认证失败：API密钥无效或已过期"
+            elif "403" in error_msg or "forbidden" in error_msg.lower():
+                return False, f"{provider_name} API 访问被拒绝：可能是API密钥权限不足或模型不可用"
+            elif "429" in error_msg or "rate limit" in error_msg.lower():
+                return False, f"{provider_name} API 请求频率过高：请稍后再试"
+            elif "timeout" in error_msg.lower() or "connection" in error_msg.lower():
+                return False, f"{provider_name} API 连接超时：请检查网络连接"
+            else:
+                return False, f"{provider_name} API 连接失败：{error_msg}"
+
     def _resolve_theme(self, theme: Optional[str]) -> str:
         """获取主题名称"""
         theme = (theme or "").strip()
@@ -63,7 +166,12 @@ class ConfidenceEvaluator:
         """评估文章的可信度和相关性"""
         if not self.client:
             # 如果没有配置AI API，返回默认值
-            provider_name = "OpenRouter或OpenAI" if self.provider == "openrouter" else "OpenAI"
+            provider_names = {
+                "bltcy": "Bltcy",
+                "openrouter": "OpenRouter",
+                "openai": "OpenAI"
+            }
+            provider_name = provider_names.get(self.provider, "AI")
             return {
                 "confidence_score": 0.5,
                 "relevance_score": 0.5,
@@ -83,7 +191,7 @@ class ConfidenceEvaluator:
             
             for model_to_try in models_to_try:
                 try:
-                    # 调用AI API（OpenAI或OpenRouter）
+                    # 调用AI API（OpenAI、OpenRouter或Bltcy）
                     response = self.client.chat.completions.create(
                         model=model_to_try,
                         messages=[

@@ -45,10 +45,13 @@ AI_PROVIDER=openai
 
 ### 方式3：优先级自动选择
 
-程序会自动选择：
-- 如果配置了 `OPENROUTER_API_KEY`，优先使用 OpenRouter
+程序会自动选择（优先级从高到低）：
+- 如果配置了 `BLTCY_API_KEY`，优先使用 Bltcy（柏拉图AI）
+- 如果配置了 `OPENROUTER_API_KEY`，使用 OpenRouter
 - 如果只配置了 `OPENAI_API_KEY`，使用 OpenAI
 - 如果都没配置，使用默认评估（置信度分数 0.5）
+
+**注意**：Bltcy 是一个国内可访问的AI API聚合平台，无需科学上网，价格优惠。详见 `docs/BLTCY_SETUP.md`
 
 ## 可用模型
 

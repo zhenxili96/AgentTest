@@ -20,6 +20,18 @@ if __name__ == "__main__":
         print("请参考 .env.example 文件配置 .env 文件")
         sys.exit(1)
     
+    # 检测AI API连接
+    from confidence_evaluator import ConfidenceEvaluator
+    print("正在检测AI API连接...")
+    evaluator = ConfidenceEvaluator()
+    success, message = evaluator.test_connection()
+    if success:
+        print(f"✓ {message}")
+    else:
+        print(f"⚠ {message}")
+        print("提示：程序将继续运行，但AI评估功能可能不可用")
+        print("     所有文章的置信度分数将使用默认值（0.5）\n")
+    
     # 注册信号处理器
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

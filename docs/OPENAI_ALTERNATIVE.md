@@ -83,7 +83,47 @@ ollama pull llama3.2  # 或其他模型，如 qwen2.5
 - ⚠️ 需要本地运行模型（需要较好的硬件）
 - ⚠️ 需要修改代码
 
-### 方案4：使用其他免费/低成本AI API
+### 方案4：使用Bltcy或OpenRouter（推荐，已集成）
+
+程序已经集成了Bltcy和OpenRouter支持，无需修改代码即可使用。
+
+#### 选项A：使用Bltcy（柏拉图AI，推荐国内用户）
+
+**优点：**
+- ✅ 无需科学上网，国内可直接访问
+- ✅ 价格优惠，比官方API更便宜
+- ✅ 兼容OpenAI接口，无需修改代码
+- ✅ 支持多种模型（ChatGPT、Claude、Gemini等260+模型）
+
+**配置步骤：**
+1. 访问 [Bltcy官网](https://bltcy.cn/) 注册并获取API Key
+2. 在 `.env` 文件中配置：
+```env
+BLTCY_API_KEY=your-bltcy-api-key-here
+AI_PROVIDER=bltcy  # 可选，会自动选择
+```
+
+详细说明请查看 `docs/BLTCY_SETUP.md`
+
+#### 选项B：使用OpenRouter
+
+**优点：**
+- ✅ 更便宜，通常比直接使用OpenAI API更经济
+- ✅ 支持400+个模型（OpenAI、Anthropic、Google、Meta等）
+- ✅ 有免费选项（部分模型免费）
+- ✅ 兼容OpenAI接口，无需修改代码
+
+**配置步骤：**
+1. 访问 [OpenRouter官网](https://openrouter.ai/) 注册并获取API Key
+2. 在 `.env` 文件中配置：
+```env
+OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
+AI_PROVIDER=openrouter  # 可选，会自动选择
+```
+
+详细说明请查看 `docs/OPENROUTER_SETUP.md`
+
+### 方案5：使用其他免费/低成本AI API
 
 可以考虑以下替代方案：
 
@@ -94,7 +134,7 @@ ollama pull llama3.2  # 或其他模型，如 qwen2.5
 
 这些都需要修改 `confidence_evaluator.py` 来适配。
 
-### 方案5：简化评估逻辑（基于规则）
+### 方案6：简化评估逻辑（基于规则）
 
 不使用AI，使用基于规则的简单评估方法：
 
@@ -108,8 +148,10 @@ ollama pull llama3.2  # 或其他模型，如 qwen2.5
 
 **如果没有OpenAI账户，推荐：**
 
-1. **短期使用**：方案1（不使用AI评估）+ 手动筛选文章
-2. **长期使用**：方案3（Ollama本地模型）或方案4（其他免费API）
+1. **国内用户（推荐）**：方案4A（Bltcy）- 无需科学上网，价格优惠，已集成
+2. **国外用户（推荐）**：方案4B（OpenRouter）- 有免费选项，价格便宜，已集成
+3. **短期使用**：方案1（不使用AI评估）+ 手动筛选文章
+4. **长期使用（有硬件）**：方案3（Ollama本地模型）
 
 ## 修改代码以支持无OpenAI运行
 

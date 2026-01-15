@@ -1,16 +1,20 @@
 # 请将此文件重命名为 .env 并填入您的API密钥
 
-# AI API配置（二选一，用于AI置信度评估）
-# 选项1：使用OpenRouter（推荐，更便宜，有免费选项）
-# 获取地址：https://openrouter.ai/keys
-OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
+# AI API配置（三选一，用于AI置信度评估）
+# 选项1：使用Bltcy（柏拉图AI，推荐，兼容OpenAI接口，价格优惠，无需科学上网）
+# 获取地址：https://bltcy.cn/ 或 https://api.bltcy.ai/
+# BLTCY_API_KEY=your-bltcy-api-key-here
 
-# 选项2：使用OpenAI
+# 选项2：使用OpenRouter（推荐，更便宜，有免费选项）
+# 获取地址：https://openrouter.ai/keys
+# OPENROUTER_API_KEY=sk-or-v1-your-openrouter-api-key-here
+
+# 选项3：使用OpenAI
 # 获取地址：https://platform.openai.com/api-keys
 # OPENAI_API_KEY=sk-your-openai-api-key-here
 
-# AI服务提供商选择（可选，默认优先OpenRouter）
-# AI_PROVIDER=openrouter  # 或 openai
+# AI服务提供商选择（可选，默认优先级：bltcy > openrouter > openai）
+# AI_PROVIDER=bltcy  # 或 openrouter 或 openai
 
 # NewsAPI配置（可选）- 用于新闻搜索
 # 如果无法访问NewsAPI，可以不配置，程序会使用RSS源

@@ -10,11 +10,14 @@ load_dotenv()
 class Config:
     """应用配置类"""
     
-    # AI API配置（支持OpenAI和OpenRouter）
+    # AI API配置（支持OpenAI、OpenRouter和Bltcy）
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENROUTER_API_KEY: str = os.getenv("OPENROUTER_API_KEY", "")
-    # AI服务提供商选择：openai 或 openrouter（默认优先使用OpenRouter如果配置了）
-    AI_PROVIDER: str = os.getenv("AI_PROVIDER", "openrouter" if os.getenv("OPENROUTER_API_KEY") else "openai")
+    BLTCY_API_KEY: str = os.getenv("BLTCY_API_KEY", "")
+    # AI服务提供商选择：openai、openrouter 或 bltcy（默认优先级：bltcy > openrouter > openai）
+    AI_PROVIDER: str = os.getenv("AI_PROVIDER", 
+        "bltcy" if os.getenv("BLTCY_API_KEY") 
+        else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "openai"))
     # AI模型配置（可通过环境变量覆盖）
     AI_MODEL: str = os.getenv("AI_MODEL", "")  # 如果为空，将使用默认模型或备用模型
     
@@ -86,13 +89,13 @@ class Config:
     @classmethod
     def validate(cls) -> bool:
         """验证必要的配置是否已设置"""
-        # AI API是可选的（OpenRouter或OpenAI，如果没有配置，会使用默认置信度评估）
+        # AI API是可选的（Bltcy、OpenRouter或OpenAI，如果没有配置，会使用默认置信度评估）
         # NewsAPI是可选的（可以使用RSS源替代）
-        has_ai_api = cls.OPENROUTER_API_KEY or cls.OPENAI_API_KEY
+        has_ai_api = cls.BLTCY_API_KEY or cls.OPENROUTER_API_KEY or cls.OPENAI_API_KEY
         warnings = []
         
         if not has_ai_api:
-            warnings.append("AI API（OPENROUTER_API_KEY或OPENAI_API_KEY未配置，将使用默认置信度评估，所有文章分数为0.5）")
+            warnings.append("AI API（BLTCY_API_KEY、OPENROUTER_API_KEY或OPENAI_API_KEY未配置，将使用默认置信度评估，所有文章分数为0.5）")
         
         if not cls.NEWS_API_KEY:
             warnings.append("NEWS_API_KEY（未配置将仅使用RSS源）")

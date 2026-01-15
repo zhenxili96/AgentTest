@@ -13,13 +13,30 @@ class KeywordMiner:
     
     def __init__(self):
         # 初始化AI客户端（与ConfidenceEvaluator类似的逻辑）
+        # 优先级：bltcy > openrouter > openai
         self.provider = Config.AI_PROVIDER
         self.api_key = None
         self.base_url = None
         self.model = "gpt-4o-mini"
         self.client = None
         
-        if self.provider == "openrouter" and Config.OPENROUTER_API_KEY:
+        if self.provider == "bltcy" and Config.BLTCY_API_KEY:
+            self.api_key = Config.BLTCY_API_KEY
+            self.base_url = "https://api.bltcy.ai/v1"
+            # Bltcy备用模型列表
+            self.fallback_models = [
+                "gpt-4o-mini",
+                "gpt-3.5-turbo",
+                "gpt-4-mini",
+                "claude-3-haiku",
+            ]
+            # 如果配置了自定义模型，优先使用
+            if Config.AI_MODEL:
+                self.model = Config.AI_MODEL
+            else:
+                self.model = self.fallback_models[0]
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+        elif self.provider == "openrouter" and Config.OPENROUTER_API_KEY:
             self.api_key = Config.OPENROUTER_API_KEY
             self.base_url = "https://openrouter.ai/api/v1"
             # OpenRouter备用模型列表
@@ -297,12 +314,15 @@ class KeywordMiner:
 3. 优先挖掘那些在文章中频繁出现但可能不在当前搜索关键词列表中的词汇
 4. 考虑中英文关键词
 
-请以以下格式返回，每个关键词一行：
-关键词1 | 相关性分数(0-1) | 影响方向(上涨/下跌/中性) | 简要说明
-关键词2 | 相关性分数 | 影响方向 | 简要说明
-...
+重要要求：
+- 必须返回真实、具体的关键词，禁止使用占位符（如"关键词1"、"关键词2"、"keyword1"等）
+- 禁止返回示例文本或测试文本
+- 每个关键词必须是实际存在的、有意义的词汇或短语
 
-示例：
+请以以下格式返回，每个关键词一行：
+关键词 | 相关性分数(0-1) | 影响方向(上涨/下跌/中性) | 简要说明
+
+示例（注意：这些是真实关键词示例，不是占位符）：
 美联储加息 | 0.9 | 下跌 | 加息通常导致美元走强，压制贵金属价格
 光伏产业需求 | 0.85 | 上涨 | 白银在光伏产业中的应用增长推动需求
 """
@@ -337,8 +357,13 @@ class KeywordMiner:
                         print(f"模型 {self.model} 不可用，已切换到 {model_to_try}")
                         self.model = model_to_try
                     
-                    # 解析关键词
+                    # 解析关键词（会自动过滤占位符）
                     keywords = self._parse_keywords_from_text(result_text)
+                    
+                    # 再次过滤无效关键词（双重保险）
+                    keywords = [kw for kw in keywords if not self._is_invalid_keyword(kw["keyword"])]
+                    
+                    # AI二次校验
                     keywords = self._validate_keywords_with_ai(
                         keywords,
                         min_relevance=0.5,
@@ -387,10 +412,13 @@ class KeywordMiner:
 3. 包括新兴概念、政策变化、行业趋势等
 4. 考虑中英文关键词
 
+重要要求：
+- 必须返回真实、具体的关键词，禁止使用占位符（如"关键词1"、"关键词2"、"keyword1"等）
+- 禁止返回示例文本或测试文本
+- 每个关键词必须是实际存在的、有意义的词汇或短语
+
 请以以下格式返回：
-关键词1 | 相关性分数(0-1) | 影响方向(上涨/下跌/中性) | 简要说明
-关键词2 | 相关性分数 | 影响方向 | 简要说明
-...
+关键词 | 相关性分数(0-1) | 影响方向(上涨/下跌/中性) | 简要说明
 """
         
         try:
@@ -423,8 +451,13 @@ class KeywordMiner:
                         print(f"模型 {self.model} 不可用，已切换到 {model_to_try}")
                         self.model = model_to_try
                     
-                    # 解析关键词
+                    # 解析关键词（会自动过滤占位符）
                     keywords = self._parse_keywords_from_text(result_text)
+                    
+                    # 再次过滤无效关键词（双重保险）
+                    keywords = [kw for kw in keywords if not self._is_invalid_keyword(kw["keyword"])]
+                    
+                    # AI二次校验
                     keywords = self._validate_keywords_with_ai(
                         keywords,
                         min_relevance=0.5,
@@ -475,11 +508,18 @@ class KeywordMiner:
         theme_name = self._resolve_theme(theme)
         prompt = f"""请对以下关键词进行二次校验，判断其是否与{theme_name}价格波动相关，避免无关或噪声词。
 
+重要要求：
+1. 必须剔除所有占位符、示例关键词（如"关键词1"、"关键词2"、"keyword1"、"example1"等）
+2. 必须剔除明显无效的关键词（如纯数字、测试文本、占位符文本等）
+3. 只保留真实、有意义、与{theme_name}价格相关的高质量关键词
+
 关键词列表：
 {chr(10).join(prompt_lines)}
 
 请逐条给出结论，格式如下（每行一个关键词）：
 关键词 | 保留/剔除 | 相关性分数(0-1) | 简要原因
+
+对于占位符或示例关键词，必须标记为"剔除"，原因注明"占位符/示例关键词"。
 """
 
         try:
@@ -559,8 +599,15 @@ class KeywordMiner:
         validated = []
         for kw in keywords:
             keyword = kw.get("keyword", "")
+            
+            # 再次检查是否是无效关键词（三重保险）
+            if self._is_invalid_keyword(keyword):
+                print(f"⚠️ 校验阶段过滤掉无效关键词: {keyword}")
+                continue
+            
             validation = validation_map.get(keyword)
             if not validation:
+                # 如果没有校验结果，但关键词本身有效，则保留（可能是AI没有返回该关键词的校验结果）
                 validated.append(kw)
                 continue
             kw["validation_score"] = validation["score"]
@@ -568,6 +615,67 @@ class KeywordMiner:
             if validation["keep"] and validation["score"] >= min_relevance:
                 validated.append(kw)
         return validated
+    
+    def _is_invalid_keyword(self, keyword: str) -> bool:
+        """检查关键词是否是无效的占位符或示例关键词"""
+        if not keyword or len(keyword.strip()) < 2:
+            return True
+        
+        keyword_lower = keyword.lower().strip()
+        keyword_original = keyword.strip()
+        
+        # 检查是否是占位符模式（如：关键词1、关键词2、keyword1、example1等）
+        placeholder_patterns = [
+            r'^关键词\d+$',
+            r'^keyword\d+$',
+            r'^example\d+$',
+            r'^示例\d+$',
+            r'^关键词\s*\d+$',
+            r'^keyword\s*\d+$',
+            r'^示例\s*\d+$',
+            r'^example\s*\d+$',
+            r'^关键词[一二三四五六七八九十]+$',
+            r'^示例[一二三四五六七八九十]+$',
+            r'^kw\d+$',  # kw1, kw2等
+            r'^key\d+$',  # key1, key2等
+            r'^词\d+$',  # 词1, 词2等
+        ]
+        
+        for pattern in placeholder_patterns:
+            if re.match(pattern, keyword_lower):
+                return True
+        
+        # 检查是否是明显的示例或占位符文本
+        invalid_texts = [
+            '关键词', 'keyword', 'example', '示例', 'placeholder',
+            '占位符', 'test', '测试', 'demo', '演示',
+            '关键词1', '关键词2', '关键词3', '关键词4', '关键词5',
+            'keyword1', 'keyword2', 'keyword3', 'keyword4', 'keyword5',
+            'example1', 'example2', 'example3', 'example4', 'example5',
+            '示例1', '示例2', '示例3',
+            'kw1', 'kw2', 'kw3',
+            'key1', 'key2', 'key3',
+            '词1', '词2', '词3',
+        ]
+        
+        if keyword_lower in invalid_texts:
+            return True
+        
+        # 检查是否只包含数字或特殊字符
+        if re.match(r'^[\d\s\-_\.]+$', keyword_original):
+            return True
+        
+        # 检查是否包含明显的占位符标记（如：xxx、aaa、123等）
+        if re.match(r'^(xxx|aaa|bbb|ccc|ddd|eee|fff|test|测试|示例|关键词)\d*$', keyword_lower):
+            return True
+        
+        # 检查是否太短且只包含常见占位符词
+        if len(keyword_original) <= 5:
+            placeholder_words = ['关键词', 'keyword', 'example', '示例', 'test', '测试', 'demo', '演示']
+            if keyword_lower in placeholder_words:
+                return True
+        
+        return False
     
     def _parse_keywords_from_text(self, text: str) -> List[Dict[str, any]]:
         """从AI返回的文本中解析关键词"""
@@ -584,6 +692,11 @@ class KeywordMiner:
                 if len(parts) >= 3:
                     keyword = parts[0].strip()
                     if not keyword:
+                        continue
+                    
+                    # 过滤掉无效的占位符关键词
+                    if self._is_invalid_keyword(keyword):
+                        print(f"⚠️ 过滤掉无效关键词: {keyword}")
                         continue
                     
                     # 提取分数

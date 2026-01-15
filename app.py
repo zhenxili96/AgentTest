@@ -6,6 +6,8 @@ from database import db
 from search_engine import SearchEngine
 from confidence_evaluator import ConfidenceEvaluator
 from keyword_miner import KeywordMiner
+from stock_identifier import StockIdentifier
+from stock_fetcher import StockFetcher
 from scheduler import Scheduler
 from config import Config
 
@@ -15,6 +17,8 @@ CORS(app)
 search_engine = SearchEngine()
 evaluator = ConfidenceEvaluator()
 keyword_miner = KeywordMiner()
+stock_identifier = StockIdentifier()
+stock_fetcher = StockFetcher()
 
 # 初始化调度器（用于后台持续获取信息）
 scheduler = Scheduler()
@@ -97,7 +101,9 @@ def get_config():
         ai_configured = evaluator.client is not None
         
         # 确定API来源显示名称
-        if ai_provider == "openrouter":
+        if ai_provider == "bltcy":
+            api_source = "Bltcy（柏拉图AI）"
+        elif ai_provider == "openrouter":
             api_source = "OpenRouter"
         elif ai_provider == "openai":
             api_source = "OpenAI"
@@ -293,6 +299,49 @@ def get_suggested_keywords():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/keywords/invalid", methods=["GET"])
+def get_invalid_keywords():
+    """获取数据库中无效的关键词列表（仅查询，不删除）"""
+    try:
+        invalid_keywords = db.get_invalid_keywords()
+        
+        keywords_data = []
+        for kw in invalid_keywords:
+            keywords_data.append({
+                "id": kw.id,
+                "keyword": kw.keyword,
+                "relevance_score": kw.relevance_score,
+                "impact": kw.impact,
+                "source": kw.source,
+                "is_active": kw.is_active,
+                "usage_count": kw.usage_count or 0,
+                "mined_at": kw.mined_at.isoformat() if kw.mined_at else None,
+            })
+        
+        return jsonify({
+            "success": True,
+            "count": len(keywords_data),
+            "keywords": keywords_data,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/keywords/clean", methods=["POST"])
+def clean_invalid_keywords():
+    """清理数据库中无效的关键词"""
+    try:
+        result = db.clean_invalid_keywords()
+        
+        return jsonify({
+            "success": True,
+            "message": f"清理完成：删除了 {result['deleted_count']} 个无效关键词",
+            **result
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/analysis/price-trend", methods=["GET"])
 def analyze_price_trend():
     """分析主题价格涨跌概率"""
@@ -360,11 +409,205 @@ def get_stock_market_info():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/stocks/identified", methods=["GET"])
+def get_identified_stocks():
+    """获取识别的股票列表"""
+    try:
+        is_active = request.args.get("active")
+        if is_active is not None:
+            is_active = is_active.lower() == "true"
+        
+        theme = request.args.get("theme")
+        limit = request.args.get("limit", type=int, default=100)
+        
+        stocks = db.get_identified_stocks(
+            is_active=is_active,
+            theme=theme,
+            limit=limit
+        )
+        
+        stocks_data = []
+        for stock in stocks:
+            stocks_data.append({
+                "id": stock.id,
+                "symbol": stock.symbol,
+                "company_name": stock.company_name,
+                "relevance": stock.relevance,
+                "theme": stock.theme,
+                "source": stock.source,
+                "is_active": stock.is_active,
+                "identified_at": stock.identified_at.isoformat() if stock.identified_at else None,
+                "last_updated_at": stock.last_updated_at.isoformat() if stock.last_updated_at else None,
+            })
+        
+        return jsonify({
+            "success": True,
+            "count": len(stocks_data),
+            "stocks": stocks_data,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/stocks/identify", methods=["POST"])
+def identify_stocks():
+    """手动触发股票识别"""
+    try:
+        data = request.get_json() or {}
+        source = data.get("source", "keywords")  # keywords 或 articles
+        theme = data.get("theme")
+        
+        stocks = []
+        if source == "articles":
+            limit = data.get("limit", 20)
+            articles = db.get_high_confidence_articles(limit=limit, min_score=0.7)
+            stocks = stock_identifier.identify_stocks_from_articles(articles, theme=theme, limit=limit)
+        else:
+            active_keywords = db.get_mined_keywords(is_active=True, min_relevance=0.6, limit=50)
+            keyword_list = [kw.keyword for kw in active_keywords]
+            stocks = stock_identifier.identify_stocks_from_keywords(keyword_list, theme=theme)
+        
+        # 保存到数据库
+        saved_count = 0
+        for stock_data in stocks:
+            if db.add_identified_stock(stock_data):
+                saved_count += 1
+        
+        return jsonify({
+            "success": True,
+            "identified": len(stocks),
+            "saved": saved_count,
+            "stocks": stocks,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/stocks/<symbol>/price", methods=["GET"])
+def get_stock_price(symbol):
+    """获取股票实时价格"""
+    try:
+        price_data = stock_fetcher.fetch_realtime_price(symbol)
+        if price_data:
+            return jsonify({
+                "success": True,
+                "price": price_data,
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "无法获取股票价格，请检查股票代码或API配置",
+            }), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/stocks/<symbol>/chart", methods=["GET"])
+def get_stock_chart_data(symbol):
+    """获取股票走势图数据"""
+    try:
+        chart_type = request.args.get("type", "daily")  # daily 或 intraday
+        days = request.args.get("days", type=int, default=30)
+        interval = request.args.get("interval", "5min")
+        
+        if chart_type == "intraday":
+            data = stock_fetcher.fetch_intraday_data(symbol, interval=interval)
+        else:
+            data = stock_fetcher.fetch_daily_data(symbol, days=days)
+        
+        if data:
+            return jsonify({
+                "success": True,
+                "symbol": symbol.upper(),
+                "data": data,
+                "type": chart_type,
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "无法获取股票走势数据，请检查股票代码或API配置",
+            }), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/stocks/<symbol>/history", methods=["GET"])
+def get_stock_price_history(symbol):
+    """获取股票价格历史（从数据库）"""
+    try:
+        hours = request.args.get("hours", type=int, default=24)
+        limit = request.args.get("limit", type=int, default=100)
+        
+        prices = db.get_stock_prices(symbol, hours=hours, limit=limit)
+        
+        prices_data = []
+        for price in prices:
+            prices_data.append({
+                "id": price.id,
+                "symbol": price.symbol,
+                "price": price.price,
+                "change": price.change,
+                "change_percent": price.change_percent,
+                "volume": price.volume,
+                "timestamp": price.timestamp.isoformat() if price.timestamp else None,
+                "source": price.source,
+            })
+        
+        return jsonify({
+            "success": True,
+            "count": len(prices_data),
+            "prices": prices_data,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/stocks/update", methods=["POST"])
+def update_stock_prices():
+    """手动触发股票价格更新"""
+    try:
+        data = request.get_json() or {}
+        symbols = data.get("symbols")  # 可选，如果不提供则更新所有活跃股票
+        
+        if symbols:
+            symbols_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+        else:
+            active_stocks = db.get_identified_stocks(is_active=True, limit=50)
+            symbols_list = [stock.symbol for stock in active_stocks]
+        
+        updated_count = 0
+        results = {}
+        for symbol in symbols_list:
+            price_data = stock_fetcher.fetch_realtime_price(symbol)
+            if price_data:
+                updated_count += 1
+                results[symbol] = price_data
+        
+        return jsonify({
+            "success": True,
+            "updated": updated_count,
+            "total": len(symbols_list),
+            "results": results,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     import os
     
     print("启动Flask API服务...")
     print(f"API将在 http://localhost:5000 上运行")
+    
+    # 检测AI API连接
+    print("正在检测AI API连接...")
+    success, message = evaluator.test_connection()
+    if success:
+        print(f"✓ {message}")
+    else:
+        print(f"⚠ {message}")
+        print("提示：API服务将继续运行，但AI评估功能可能不可用")
+        print("     所有文章的置信度分数将使用默认值（0.5）\n")
     
     # 启动后台定时任务（实时持续获取信息源并进行分析）
     # 注意：Flask debug模式下的reloader可能会重启进程，但调度器有运行状态检查，不会重复启动
