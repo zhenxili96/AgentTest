@@ -327,6 +327,10 @@ class KeywordMiner:
                     
                     # 解析关键词
                     keywords = self._parse_keywords_from_text(result_text)
+                    keywords = self._validate_keywords_with_ai(
+                        keywords,
+                        min_relevance=0.5
+                    )
                     
                     # 过滤掉已有的基础关键词
                     new_keywords = [
@@ -407,6 +411,10 @@ class KeywordMiner:
                     
                     # 解析关键词
                     keywords = self._parse_keywords_from_text(result_text)
+                    keywords = self._validate_keywords_with_ai(
+                        keywords,
+                        min_relevance=0.5
+                    )
                     
                     print(f"✅ 从市场趋势中挖掘出 {len(keywords)} 个关键词")
                     
@@ -427,6 +435,122 @@ class KeywordMiner:
         except Exception as e:
             print(f"AI提取趋势关键词出错: {e}")
             return []
+
+    def _validate_keywords_with_ai(
+        self,
+        keywords: List[Dict[str, Any]],
+        min_relevance: float
+    ) -> List[Dict[str, Any]]:
+        """使用AI对关键词进行二次校验，剔除无关项"""
+        if not keywords:
+            return []
+
+        if not self.client:
+            print("⚠️ 未配置AI API，跳过关键词校验")
+            return keywords
+
+        prompt_lines = []
+        for kw in keywords:
+            prompt_lines.append(
+                f"{kw.get('keyword', '')} | 初始相关性:{kw.get('relevance_score', 0.5):.2f} | "
+                f"方向:{kw.get('impact', '不确定')} | 说明:{kw.get('reasoning', '')}"
+            )
+
+        prompt = f"""请对以下关键词进行二次校验，判断其是否与白银价格波动相关，避免无关或噪声词。
+
+关键词列表：
+{chr(10).join(prompt_lines)}
+
+请逐条给出结论，格式如下（每行一个关键词）：
+关键词 | 保留/剔除 | 相关性分数(0-1) | 简要原因
+"""
+
+        try:
+            models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+            last_error = None
+
+            for model_to_try in models_to_try:
+                try:
+                    response = self.client.chat.completions.create(
+                        model=model_to_try,
+                        messages=[
+                            {
+                                "role": "system",
+                                "content": "你是一个贵金属市场分析助理，负责校验关键词的相关性。"
+                            },
+                            {
+                                "role": "user",
+                                "content": prompt
+                            }
+                        ],
+                        temperature=0.2,
+                        max_tokens=1200,
+                    )
+
+                    result_text = response.choices[0].message.content
+
+                    if model_to_try != self.model:
+                        print(f"模型 {self.model} 不可用，已切换到 {model_to_try}")
+                        self.model = model_to_try
+
+                    validated = self._apply_keyword_validation_results(
+                        keywords,
+                        result_text,
+                        min_relevance
+                    )
+                    print(f"✅ 关键词校验完成，保留 {len(validated)} / {len(keywords)}")
+                    return validated
+                except Exception as e:
+                    last_error = e
+                    error_str = str(e)
+                    if "403" in error_str or "not available" in error_str.lower() or "region" in error_str.lower():
+                        print(f"模型 {model_to_try} 在您的地区不可用，尝试下一个模型...")
+                        continue
+                    raise
+
+            raise last_error if last_error else Exception("所有模型都不可用")
+        except Exception as e:
+            print(f"AI关键词校验出错: {e}")
+            return keywords
+
+    def _apply_keyword_validation_results(
+        self,
+        keywords: List[Dict[str, Any]],
+        result_text: str,
+        min_relevance: float
+    ) -> List[Dict[str, Any]]:
+        """应用AI校验结果并过滤关键词"""
+        validation_map = {}
+        for line in result_text.split("\n"):
+            line = line.strip()
+            if not line or "|" not in line:
+                continue
+            parts = [p.strip() for p in line.split("|")]
+            if len(parts) < 3:
+                continue
+            keyword = parts[0]
+            decision = parts[1].lower()
+            score = self._extract_score_from_text(parts[2])
+            reason = parts[3] if len(parts) > 3 else ""
+            keep = any(flag in decision for flag in ["保留", "keep", "retain", "yes"])
+            validation_map[keyword] = {
+                "keep": keep,
+                "score": score,
+                "reason": reason
+            }
+
+        validated = []
+        for kw in keywords:
+            keyword = kw.get("keyword", "")
+            validation = validation_map.get(keyword)
+            if not validation:
+                validated.append(kw)
+                continue
+            kw["validation_score"] = validation["score"]
+            kw["validation_reasoning"] = validation["reason"]
+            if validation["keep"] and validation["score"] >= min_relevance:
+                validated.append(kw)
+        return validated
     
     def _parse_keywords_from_text(self, text: str) -> List[Dict[str, any]]:
         """从AI返回的文本中解析关键词"""
