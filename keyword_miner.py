@@ -56,12 +56,18 @@ class KeywordMiner:
         
         # 现有的基础关键词（用于过滤和参考）
         self.base_keywords = set(Config.SEARCH_KEYWORDS)
+
+    def _resolve_theme(self, theme: Optional[str]) -> str:
+        """获取主题名称"""
+        theme = (theme or "").strip()
+        return theme or Config.DEFAULT_THEME
     
     def mine_keywords_from_articles(
         self, 
         hours: int = 24, 
         min_confidence: float = 0.7,
-        limit: int = 50
+        limit: int = 50,
+        theme: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """从高置信度文章中挖掘关键词"""
         if not self.client:
@@ -82,10 +88,11 @@ class KeywordMiner:
             print(f"📊 分析 {len(articles)} 篇高置信度文章以挖掘关键词...")
             
             # 构建分析文本
-            articles_text = self._build_articles_summary(articles)
+            theme_name = self._resolve_theme(theme)
+            articles_text = self._build_articles_summary(articles, theme_name)
             
             # 使用AI分析并提取关键词
-            keywords = self._extract_keywords_with_ai(articles_text, articles)
+            keywords = self._extract_keywords_with_ai(articles_text, articles, theme_name)
             
             return keywords
         except Exception as e:
@@ -94,7 +101,8 @@ class KeywordMiner:
     
     def mine_keywords_from_market_trends(
         self,
-        market_context: Optional[str] = None
+        market_context: Optional[str] = None,
+        theme: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """从市场趋势中挖掘关键词（基于当前市场情况和新闻）"""
         if not self.client:
@@ -110,12 +118,13 @@ class KeywordMiner:
                 return []
             
             # 构建市场趋势分析文本
-            market_text = self._build_market_trends_summary(recent_articles)
+            theme_name = self._resolve_theme(theme)
+            market_text = self._build_market_trends_summary(recent_articles, theme_name)
             if market_context:
                 market_text += f"\n\n额外市场信息：\n{market_context}"
             
             # 使用AI分析市场趋势并提取关键词
-            keywords = self._extract_keywords_from_trends_with_ai(market_text)
+            keywords = self._extract_keywords_from_trends_with_ai(market_text, theme_name)
             
             return keywords
         except Exception as e:
@@ -125,9 +134,10 @@ class KeywordMiner:
     def analyze_keyword_relevance(
         self,
         keyword: str,
-        context: Optional[str] = None
+        context: Optional[str] = None,
+        theme: Optional[str] = None
     ) -> Dict[str, any]:
-        """分析单个关键词与白银价格的相关性"""
+        """分析单个关键词与主题价格的相关性"""
         if not self.client:
             return {
                 "keyword": keyword,
@@ -137,13 +147,14 @@ class KeywordMiner:
             }
         
         try:
-            prompt = f"""请分析以下关键词与白银价格的关联程度和潜在影响。
+            theme_name = self._resolve_theme(theme)
+            prompt = f"""请分析以下关键词与{theme_name}价格的关联程度和潜在影响。
 
 关键词: {keyword}
 {('上下文: ' + context) if context else ''}
 
 请评估：
-1. 该关键词与白银价格的关联程度（0-1分）
+1. 该关键词与{theme_name}价格的关联程度（0-1分）
 2. 潜在影响方向（上涨/下跌/中性/不确定）
 3. 影响机制和原因
 
@@ -164,7 +175,7 @@ class KeywordMiner:
                         messages=[
                             {
                                 "role": "system",
-                                "content": "你是一个专业的贵金属市场分析师，擅长分析各种因素对白银价格的影响。"
+                                "content": f"你是一个专业的投资市场分析师，擅长分析各种因素对{theme_name}价格的影响。"
                             },
                             {
                                 "role": "user",
@@ -218,10 +229,10 @@ class KeywordMiner:
                 "reasoning": f"分析出错: {error_msg}"
             }
     
-    def _build_articles_summary(self, articles) -> str:
+    def _build_articles_summary(self, articles, theme: str) -> str:
         """构建文章摘要文本用于AI分析"""
         summary_parts = []
-        summary_parts.append(f"以下是 {len(articles)} 篇高置信度的白银投资相关文章：\n")
+        summary_parts.append(f"以下是 {len(articles)} 篇高置信度的{theme}投资相关文章：\n")
         
         for i, article in enumerate(articles[:20], 1):  # 限制前20篇
             summary_parts.append(f"\n文章 {i}:")
@@ -236,7 +247,7 @@ class KeywordMiner:
         
         return "\n".join(summary_parts)
     
-    def _build_market_trends_summary(self, articles) -> str:
+    def _build_market_trends_summary(self, articles, theme: str) -> str:
         """构建市场趋势摘要文本"""
         # 按时间分组
         now = datetime.utcnow()
@@ -244,7 +255,7 @@ class KeywordMiner:
         recent_48h = [a for a in articles if (now - a.published_at).total_seconds() <= 172800]
         
         summary_parts = []
-        summary_parts.append(f"市场趋势分析（基于 {len(articles)} 篇近期文章）：\n")
+        summary_parts.append(f"{theme}市场趋势分析（基于 {len(articles)} 篇近期文章）：\n")
         summary_parts.append(f"- 最近24小时: {len(recent_24h)} 篇文章")
         summary_parts.append(f"- 最近48小时: {len(recent_48h)} 篇文章\n")
         
@@ -272,15 +283,16 @@ class KeywordMiner:
     def _extract_keywords_with_ai(
         self,
         articles_text: str,
-        articles: List
+        articles: List,
+        theme: str
     ) -> List[Dict[str, Any]]:
         """使用AI从文章中提取关键词"""
-        prompt = f"""请分析以下高置信度的白银投资相关文章，挖掘出能引发白银价格波动的关键词。
+        prompt = f"""请分析以下高置信度的{theme}投资相关文章，挖掘出能引发{theme}价格波动的关键词。
 
 {articles_text}
 
 任务：
-1. 从这些文章中识别出可能影响白银价格的关键词、短语或概念
+1. 从这些文章中识别出可能影响{theme}价格的关键词、短语或概念
 2. 包括但不限于：经济指标、政策事件、行业动态、市场情绪、技术术语等
 3. 优先挖掘那些在文章中频繁出现但可能不在当前搜索关键词列表中的词汇
 4. 考虑中英文关键词
@@ -307,7 +319,7 @@ class KeywordMiner:
                         messages=[
                             {
                                 "role": "system",
-                                "content": "你是一个专业的贵金属市场分析专家，擅长从市场数据中识别影响价格的关键因素。"
+                                "content": f"你是一个专业的投资市场分析专家，擅长从市场数据中识别影响{theme}价格的关键因素。"
                             },
                             {
                                 "role": "user",
@@ -329,7 +341,8 @@ class KeywordMiner:
                     keywords = self._parse_keywords_from_text(result_text)
                     keywords = self._validate_keywords_with_ai(
                         keywords,
-                        min_relevance=0.5
+                        min_relevance=0.5,
+                        theme=theme
                     )
                     
                     # 过滤掉已有的基础关键词
@@ -360,16 +373,17 @@ class KeywordMiner:
     
     def _extract_keywords_from_trends_with_ai(
         self,
-        market_text: str
+        market_text: str,
+        theme: str
     ) -> List[Dict[str, Any]]:
         """使用AI从市场趋势中提取关键词"""
-        prompt = f"""请基于以下市场趋势分析，识别出可能在未来影响白银价格波动的关键词和概念。
+        prompt = f"""请基于以下市场趋势分析，识别出可能在未来影响{theme}价格波动的关键词和概念。
 
 {market_text}
 
 任务：
 1. 识别当前市场热点和趋势
-2. 预测可能影响白银价格的潜在因素和关键词
+2. 预测可能影响{theme}价格的潜在因素和关键词
 3. 包括新兴概念、政策变化、行业趋势等
 4. 考虑中英文关键词
 
@@ -391,7 +405,7 @@ class KeywordMiner:
                         messages=[
                             {
                                 "role": "system",
-                                "content": "你是一个专业的市场趋势分析专家，擅长识别和预测影响贵金属价格的因素。"
+                                "content": f"你是一个专业的市场趋势分析专家，擅长识别和预测影响{theme}价格的因素。"
                             },
                             {
                                 "role": "user",
@@ -413,7 +427,8 @@ class KeywordMiner:
                     keywords = self._parse_keywords_from_text(result_text)
                     keywords = self._validate_keywords_with_ai(
                         keywords,
-                        min_relevance=0.5
+                        min_relevance=0.5,
+                        theme=theme
                     )
                     
                     print(f"✅ 从市场趋势中挖掘出 {len(keywords)} 个关键词")
@@ -439,7 +454,8 @@ class KeywordMiner:
     def _validate_keywords_with_ai(
         self,
         keywords: List[Dict[str, Any]],
-        min_relevance: float
+        min_relevance: float,
+        theme: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """使用AI对关键词进行二次校验，剔除无关项"""
         if not keywords:
@@ -456,7 +472,8 @@ class KeywordMiner:
                 f"方向:{kw.get('impact', '不确定')} | 说明:{kw.get('reasoning', '')}"
             )
 
-        prompt = f"""请对以下关键词进行二次校验，判断其是否与白银价格波动相关，避免无关或噪声词。
+        theme_name = self._resolve_theme(theme)
+        prompt = f"""请对以下关键词进行二次校验，判断其是否与{theme_name}价格波动相关，避免无关或噪声词。
 
 关键词列表：
 {chr(10).join(prompt_lines)}
@@ -476,7 +493,7 @@ class KeywordMiner:
                         messages=[
                             {
                                 "role": "system",
-                                "content": "你是一个贵金属市场分析助理，负责校验关键词的相关性。"
+                                "content": f"你是一个投资市场分析助理，负责校验关键词与{theme_name}的相关性。"
                             },
                             {
                                 "role": "user",
@@ -618,14 +635,20 @@ class KeywordMiner:
     def get_suggested_keywords(
         self,
         min_relevance: float = 0.6,
-        max_results: int = 50
+        max_results: int = 50,
+        theme: Optional[str] = None
     ) -> List[str]:
         """获取建议的关键词列表（简化版本，只返回关键词字符串）"""
         # 从文章中挖掘
-        mined_keywords = self.mine_keywords_from_articles(hours=48, min_confidence=0.7, limit=50)
+        mined_keywords = self.mine_keywords_from_articles(
+            hours=48,
+            min_confidence=0.7,
+            limit=50,
+            theme=theme
+        )
         
         # 从市场趋势中挖掘
-        trend_keywords = self.mine_keywords_from_market_trends()
+        trend_keywords = self.mine_keywords_from_market_trends(theme=theme)
         
         # 合并并去重
         all_keywords = {}

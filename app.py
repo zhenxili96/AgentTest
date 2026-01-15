@@ -132,13 +132,21 @@ def get_config():
 def manual_search():
     """手动触发搜索"""
     try:
+        data = request.get_json() or {}
+        theme = data.get("theme")
+        keywords = data.get("keywords")
+
         # 搜索文章
-        articles = search_engine.search_all(Config.MAX_ARTICLES_PER_SEARCH)
+        articles = search_engine.search_all(
+            Config.MAX_ARTICLES_PER_SEARCH,
+            theme=theme,
+            keywords=keywords
+        )
         
         # 评估并保存
         saved_count = 0
         for article in articles:
-            evaluation = evaluator.evaluate(article)
+            evaluation = evaluator.evaluate(article, theme=theme)
             article_data = {**article, **evaluation}
             if db.add_article(article_data):
                 saved_count += 1
@@ -162,17 +170,20 @@ def mine_keywords():
         hours = data.get("hours", 48)
         min_confidence = data.get("min_confidence", 0.7)
         limit = data.get("limit", 50)
+        theme = data.get("theme")
         
         # 挖掘关键词
         if source == "trends":
             keywords = keyword_miner.mine_keywords_from_market_trends(
-                market_context=data.get("market_context")
+                market_context=data.get("market_context"),
+                theme=theme
             )
         else:
             keywords = keyword_miner.mine_keywords_from_articles(
                 hours=hours,
                 min_confidence=min_confidence,
-                limit=limit
+                limit=limit,
+                theme=theme
             )
         
         # 保存到数据库
@@ -245,9 +256,10 @@ def analyze_keyword():
         
         keyword = data["keyword"]
         context = data.get("context")
+        theme = data.get("theme")
         
         # 分析关键词
-        analysis = keyword_miner.analyze_keyword_relevance(keyword, context)
+        analysis = keyword_miner.analyze_keyword_relevance(keyword, context, theme=theme)
         
         return jsonify({
             "success": True,
@@ -263,11 +275,13 @@ def get_suggested_keywords():
     try:
         min_relevance = request.args.get("min_relevance", type=float, default=0.6)
         max_results = request.args.get("max_results", type=int, default=50)
+        theme = request.args.get("theme")
         
         # 获取建议关键词
         keywords = keyword_miner.get_suggested_keywords(
             min_relevance=min_relevance,
-            max_results=max_results
+            max_results=max_results,
+            theme=theme
         )
         
         return jsonify({
@@ -281,13 +295,19 @@ def get_suggested_keywords():
 
 @app.route("/api/analysis/price-trend", methods=["GET"])
 def analyze_price_trend():
-    """分析白银价格涨跌概率"""
+    """分析主题价格涨跌概率"""
     try:
         # 获取最近的高置信度文章
         limit = request.args.get("limit", type=int, default=20)
         hours = request.args.get("hours", type=int, default=168)  # 默认7天
+        theme = request.args.get("theme")
+        filter_keywords = search_engine._normalize_keywords(theme=theme) if theme else None
         
-        articles = db.get_high_confidence_articles(limit=limit, min_score=0.7)
+        articles = db.get_high_confidence_articles(
+            limit=limit,
+            min_score=0.7,
+            keywords=filter_keywords
+        )
         recent_articles = [a for a in articles if a.published_at and 
                           (datetime.utcnow() - a.published_at).total_seconds() / 3600 <= hours]
         
@@ -305,7 +325,7 @@ def analyze_price_trend():
             })
         
         # 使用AI分析涨跌概率
-        analysis_result = evaluator.analyze_price_trend(recent_articles)
+        analysis_result = evaluator.analyze_price_trend(recent_articles, theme=theme)
         
         return jsonify({
             "success": True,
