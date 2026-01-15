@@ -3,7 +3,7 @@ import requests
 import feedparser
 from bs4 import BeautifulSoup
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 from config import Config
 
 
@@ -14,16 +14,60 @@ class SearchEngine:
         self.news_api_key = Config.NEWS_API_KEY
         self.user_agent = Config.USER_AGENT
         self.keywords = Config.SEARCH_KEYWORDS
+
+    def _normalize_keywords(
+        self,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None
+    ) -> List[str]:
+        """根据主题或外部关键词生成搜索关键词列表"""
+        normalized: List[str] = []
+
+        if isinstance(keywords, str):
+            split_keywords = [kw.strip() for kw in keywords.split(",") if kw.strip()]
+            normalized.extend(split_keywords)
+        elif isinstance(keywords, list):
+            normalized.extend([kw.strip() for kw in keywords if isinstance(kw, str) and kw.strip()])
+
+        if theme:
+            theme = theme.strip()
+            if theme:
+                normalized.append(theme)
+                theme_parts = [
+                    part.strip()
+                    for part in theme.replace("，", ",").replace("、", ",").split(",")
+                    if part.strip()
+                ]
+                normalized.extend(theme_parts)
+
+        if not normalized:
+            normalized = list(self.keywords)
+
+        # 去重保持顺序
+        seen = set()
+        deduped = []
+        for kw in normalized:
+            if kw not in seen:
+                seen.add(kw)
+                deduped.append(kw)
+        return deduped
     
-    def search_newsapi(self, query: str, max_results: int = 50) -> List[Dict]:
+    def search_newsapi(
+        self,
+        query: str,
+        max_results: int = 50,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None
+    ) -> List[Dict]:
         """使用NewsAPI搜索新闻"""
         if not self.news_api_key:
             return []
-        
+
+        active_keywords = self._normalize_keywords(theme=theme, keywords=keywords)
         articles = []
         try:
             # 构建查询（包含多个关键词）
-            search_query = " OR ".join([f'"{kw}"' for kw in self.keywords])
+            search_query = " OR ".join([f'"{kw}"' for kw in active_keywords])
             
             url = "https://newsapi.org/v2/everything"
             params = {
@@ -51,15 +95,28 @@ class SearchEngine:
                         "source": item.get("source", {}).get("name", "NewsAPI"),
                         "author": item.get("author"),
                         "published_at": published_at,
-                        "keywords": ", ".join([kw for kw in self.keywords if kw.lower() in item.get("title", "").lower() or kw.lower() in item.get("description", "").lower()]),
+                        "keywords": ", ".join(
+                            [
+                                kw
+                                for kw in active_keywords
+                                if kw.lower() in item.get("title", "").lower()
+                                or kw.lower() in item.get("description", "").lower()
+                            ]
+                        ),
                     })
         except Exception as e:
             print(f"NewsAPI搜索出错: {e}")
         
         return articles
     
-    def search_rss_feeds(self, max_results: int = 50) -> List[Dict]:
+    def search_rss_feeds(
+        self,
+        max_results: int = 50,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None
+    ) -> List[Dict]:
         """搜索RSS源"""
+        active_keywords = self._normalize_keywords(theme=theme, keywords=keywords)
         articles = []
         successful_feeds = 0
         total_feed_articles = 0
@@ -92,7 +149,7 @@ class SearchEngine:
                     summary_lower = summary.lower()
                     
                     matched_keywords = [
-                        kw for kw in self.keywords 
+                        kw for kw in active_keywords 
                         if kw and (kw.lower() in title_lower or kw.lower() in summary_lower)
                     ]
                     
@@ -125,21 +182,26 @@ class SearchEngine:
             print("⚠️ 警告：所有RSS源都无法访问，请检查网络连接或RSS源地址")
         elif len(articles) == 0 and total_feed_articles > 0:
             print(f"⚠️ 提示：成功访问 {successful_feeds} 个RSS源（共 {total_feed_articles} 篇文章），但没有文章匹配关键词")
-            print(f"   关键词: {', '.join(self.keywords)}")
+            print(f"   关键词: {', '.join(active_keywords)}")
             print(f"   建议: 尝试更通用的关键词，或检查RSS源是否包含相关主题的文章")
         
         return articles
     
-    def search_all(self, max_results: int = 50) -> List[Dict]:
+    def search_all(
+        self,
+        max_results: int = 50,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None
+    ) -> List[Dict]:
         """搜索所有数据源"""
         all_articles = []
         
         # 从NewsAPI搜索
-        newsapi_articles = self.search_newsapi("", max_results)
+        newsapi_articles = self.search_newsapi("", max_results, theme=theme, keywords=keywords)
         all_articles.extend(newsapi_articles)
         
         # 从RSS源搜索
-        rss_articles = self.search_rss_feeds(max_results)
+        rss_articles = self.search_rss_feeds(max_results, theme=theme, keywords=keywords)
         all_articles.extend(rss_articles)
         
         # 去重（基于URL）

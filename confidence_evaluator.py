@@ -53,8 +53,13 @@ class ConfidenceEvaluator:
             self.fallback_models = []
         
         self.min_confidence = Config.MIN_CONFIDENCE_SCORE
+
+    def _resolve_theme(self, theme: Optional[str]) -> str:
+        """获取主题名称"""
+        theme = (theme or "").strip()
+        return theme or Config.DEFAULT_THEME
     
-    def evaluate(self, article: Dict) -> Dict:
+    def evaluate(self, article: Dict, theme: Optional[str] = None) -> Dict:
         """评估文章的可信度和相关性"""
         if not self.client:
             # 如果没有配置AI API，返回默认值
@@ -69,7 +74,8 @@ class ConfidenceEvaluator:
         
         try:
             # 构建评估提示
-            prompt = self._build_evaluation_prompt(article)
+            theme_name = self._resolve_theme(theme)
+            prompt = self._build_evaluation_prompt(article, theme_name)
             
             # 尝试调用AI API，如果失败则尝试备用模型
             models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
@@ -83,7 +89,7 @@ class ConfidenceEvaluator:
                         messages=[
                             {
                                 "role": "system",
-                                "content": "你是一个专业的金融信息分析专家，专门评估白银投资相关的新闻和信息源的可信度。"
+                                "content": f"你是一个专业的金融信息分析专家，专门评估{theme_name}投资相关的新闻和信息源的可信度。"
                             },
                             {
                                 "role": "user",
@@ -138,21 +144,21 @@ class ConfidenceEvaluator:
                 "is_high_confidence": False,
             }
     
-    def _build_evaluation_prompt(self, article: Dict) -> str:
+    def _build_evaluation_prompt(self, article: Dict, theme: str) -> str:
         """构建评估提示"""
         title = article.get("title", "")
         content = article.get("content", "")[:1000]  # 限制长度
         source = article.get("source", "")
         
         prompt = f"""
-请评估以下关于白银投资的新闻文章的可信度和相关性。
+请评估以下关于{theme}投资的新闻文章的可信度和相关性。
 
 标题: {title}
 来源: {source}
 内容摘要: {content}
 
 请从以下三个维度进行评估（每个维度0-1分）：
-1. 相关性（relevance_score）：文章与白银投资的关联程度
+1. 相关性（relevance_score）：文章与{theme}投资的关联程度
 2. 可靠性（reliability_score）：信息来源的可靠性和可信度
 3. 置信度（confidence_score）：综合置信度，用于投资决策的参考价值
 
@@ -217,8 +223,8 @@ class ConfidenceEvaluator:
             return max(0.0, min(1.0, score))
         return 0.5
     
-    def analyze_price_trend(self, articles: list) -> dict:
-        """分析白银价格涨跌趋势"""
+    def analyze_price_trend(self, articles: list, theme: Optional[str] = None) -> dict:
+        """分析主题价格涨跌趋势"""
         if not self.client:
             return {
                 "up_probability": 50.0,
@@ -250,14 +256,15 @@ class ConfidenceEvaluator:
             
             articles_text = "\n\n".join(articles_summary)
             
+            theme_name = self._resolve_theme(theme)
             # 构建分析提示
             prompt = f"""
-基于以下高置信度的白银投资相关文章和分析，请评估白银价格的涨跌概率。
+基于以下高置信度的{theme_name}投资相关文章和分析，请评估{theme_name}相关价格的涨跌概率。
 
 文章和分析摘要：
 {articles_text}
 
-请综合分析这些信息，评估白银价格在未来短期（1-2周）内的涨跌概率，并给出简要分析。
+请综合分析这些信息，评估{theme_name}相关价格在未来短期（1-2周）内的涨跌概率，并给出简要分析。
 
 请以以下格式返回：
 上涨概率: XX% (0-100的整数)
@@ -272,7 +279,7 @@ class ConfidenceEvaluator:
 - 下跌概率：价格可能下跌的概率  
 - 中性概率：价格可能横盘或波动较小的概率
 - 三个概率之和必须等于100%
-- 简要分析应该基于文章中的信息，客观分析影响白银价格的主要因素
+- 简要分析应该基于文章中的信息，客观分析影响{theme_name}价格的主要因素
 """
             
             # 尝试调用AI API，如果失败则尝试备用模型
@@ -286,7 +293,7 @@ class ConfidenceEvaluator:
                         messages=[
                             {
                                 "role": "system",
-                                "content": "你是一个专业的贵金属投资分析专家，擅长分析白银价格走势和影响因素。"
+                                "content": f"你是一个专业的投资分析专家，擅长分析{theme_name}价格走势和影响因素。"
                             },
                             {
                                 "role": "user",
