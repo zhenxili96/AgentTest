@@ -301,6 +301,7 @@ def analyze_price_trend():
         limit = request.args.get("limit", type=int, default=20)
         hours = request.args.get("hours", type=int, default=168)  # 默认7天
         theme = request.args.get("theme")
+        symbols = request.args.get("symbols")
         filter_keywords = search_engine._normalize_keywords(theme=theme) if theme else None
         
         articles = db.get_high_confidence_articles(
@@ -324,13 +325,36 @@ def analyze_price_trend():
                 }
             })
         
+        # 获取股市行情作为辅助分析
+        stock_data = search_engine.fetch_stock_market_info(symbols=symbols)
+        market_context = search_engine.build_stock_market_context(stock_data)
+
         # 使用AI分析涨跌概率
-        analysis_result = evaluator.analyze_price_trend(recent_articles, theme=theme)
-        
+        analysis_result = evaluator.analyze_price_trend(
+            recent_articles,
+            theme=theme,
+            market_context=market_context
+        )
+
         return jsonify({
             "success": True,
             "analysis": analysis_result,
             "articles_count": len(recent_articles),
+            "stock_market": stock_data,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/market/stock", methods=["GET"])
+def get_stock_market_info():
+    """获取股市行情信息"""
+    try:
+        symbols = request.args.get("symbols")
+        stock_data = search_engine.fetch_stock_market_info(symbols=symbols)
+        return jsonify({
+            "success": stock_data.get("success", False),
+            "market": stock_data,
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

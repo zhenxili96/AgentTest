@@ -223,7 +223,12 @@ class ConfidenceEvaluator:
             return max(0.0, min(1.0, score))
         return 0.5
     
-    def analyze_price_trend(self, articles: list, theme: Optional[str] = None) -> dict:
+    def analyze_price_trend(
+        self,
+        articles: list,
+        theme: Optional[str] = None,
+        market_context: Optional[str] = None
+    ) -> dict:
         """分析主题价格涨跌趋势"""
         if not self.client:
             return {
@@ -258,11 +263,15 @@ class ConfidenceEvaluator:
             
             theme_name = self._resolve_theme(theme)
             # 构建分析提示
+            market_section = ""
+            if market_context:
+                market_section = f"\n补充市场行情信息：\n{market_context}\n"
             prompt = f"""
 基于以下高置信度的{theme_name}投资相关文章和分析，请评估{theme_name}相关价格的涨跌概率。
 
 文章和分析摘要：
 {articles_text}
+{market_section}
 
 请综合分析这些信息，评估{theme_name}相关价格在未来短期（1-2周）内的涨跌概率，并给出简要分析。
 
