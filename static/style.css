@@ -204,6 +204,43 @@ body {
     border: 1px solid #e2e8f0;
 }
 
+.sort-group {
+    gap: 12px;
+}
+
+.sort-label {
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.sort-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.sort-btn {
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid #cbd5f0;
+    background: #ffffff;
+    color: #4a5568;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.sort-btn:hover {
+    border-color: #667eea;
+    color: #4c51bf;
+}
+
+.sort-btn.active {
+    background: #667eea;
+    border-color: #667eea;
+    color: #ffffff;
+}
+
 .btn {
     padding: 12px 24px;
     border: none;
