@@ -545,6 +545,66 @@ function getImpactClass(impact) {
 
 // 加载文章列表
 let articlesRefreshInterval = null;
+let currentArticles = [];
+let currentArticlesSort = 'published_at';
+
+function sortArticles(articles, sortKey) {
+    const sorted = [...articles];
+    switch (sortKey) {
+        case 'relevance_score':
+            return sorted.sort((a, b) => (b.relevance_score || 0) - (a.relevance_score || 0));
+        case 'reliability_score':
+            return sorted.sort((a, b) => (b.reliability_score || 0) - (a.reliability_score || 0));
+        case 'published_at':
+        default:
+            return sorted.sort((a, b) => {
+                const timeA = a.published_at ? new Date(a.published_at).getTime() : 0;
+                const timeB = b.published_at ? new Date(b.published_at).getTime() : 0;
+                return timeB - timeA;
+            });
+    }
+}
+
+function renderArticles(articles) {
+    const articlesList = document.getElementById('articles-list');
+    if (!articlesList) return;
+
+    if (!articles.length) {
+        articlesList.innerHTML = '<div class="result-area" style="display: block; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404;">暂无高置信度文章，系统正在持续搜索中...</div>';
+        return;
+    }
+
+    articlesList.innerHTML = articles.map(article => `
+        <div class="article-item">
+            <div class="article-header">
+                <div class="article-title">
+                    <a href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer">
+                        ${escapeHtml(article.title)}
+                    </a>
+                </div>
+                <div class="article-score">${article.confidence_score.toFixed(2)}</div>
+            </div>
+            <div class="article-meta">
+                <span><strong>来源：</strong>${escapeHtml(article.source || '未知')}</span>
+                <span><strong>发布时间：</strong>${formatDate(article.published_at)}</span>
+                <span><strong>相关性：</strong>${article.relevance_score.toFixed(2)}</span>
+                <span><strong>可靠性：</strong>${article.reliability_score.toFixed(2)}</span>
+                ${article.keywords ? `<span><strong>关键词：</strong>${escapeHtml(article.keywords)}</span>` : ''}
+            </div>
+            ${article.content ? `
+                <div class="article-content">
+                    ${escapeHtml(article.content.substring(0, 500))}${article.content.length > 500 ? '...' : ''}
+                </div>
+            ` : ''}
+            ${article.ai_analysis ? `
+                <div class="article-analysis">
+                    <strong>AI分析：</strong><br>
+                    ${escapeHtml(article.ai_analysis)}
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+}
 
 async function loadArticles() {
     const articlesList = document.getElementById('articles-list');
@@ -563,41 +623,9 @@ async function loadArticles() {
         const result = await response.json();
         
         if (result.success) {
-            if (result.articles.length === 0) {
-                articlesList.innerHTML = '<div class="result-area" style="display: block; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404;">暂无高置信度文章，系统正在持续搜索中...</div>';
-                return;
-            }
-            
-            articlesList.innerHTML = result.articles.map(article => `
-                <div class="article-item">
-                    <div class="article-header">
-                        <div class="article-title">
-                            <a href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer">
-                                ${escapeHtml(article.title)}
-                            </a>
-                        </div>
-                        <div class="article-score">${article.confidence_score.toFixed(2)}</div>
-                    </div>
-                    <div class="article-meta">
-                        <span><strong>来源：</strong>${escapeHtml(article.source || '未知')}</span>
-                        <span><strong>发布时间：</strong>${formatDate(article.published_at)}</span>
-                        <span><strong>相关性：</strong>${article.relevance_score.toFixed(2)}</span>
-                        <span><strong>可靠性：</strong>${article.reliability_score.toFixed(2)}</span>
-                        ${article.keywords ? `<span><strong>关键词：</strong>${escapeHtml(article.keywords)}</span>` : ''}
-                    </div>
-                    ${article.content ? `
-                        <div class="article-content">
-                            ${escapeHtml(article.content.substring(0, 500))}${article.content.length > 500 ? '...' : ''}
-                        </div>
-                    ` : ''}
-                    ${article.ai_analysis ? `
-                        <div class="article-analysis">
-                            <strong>AI分析：</strong><br>
-                            ${escapeHtml(article.ai_analysis)}
-                        </div>
-                    ` : ''}
-                </div>
-            `).join('');
+            currentArticles = result.articles || [];
+            const sortedArticles = sortArticles(currentArticles, currentArticlesSort);
+            renderArticles(sortedArticles);
         } else {
             throw new Error(result.error || '加载失败');
         }
@@ -1409,6 +1437,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (articlesMinScore) {
         articlesMinScore.addEventListener('change', loadArticles);
     }
+
+    const sortButtons = document.querySelectorAll('.sort-btn');
+    sortButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const sortKey = button.dataset.sort;
+            if (!sortKey || sortKey === currentArticlesSort) return;
+            currentArticlesSort = sortKey;
+            sortButtons.forEach(btn => btn.classList.toggle('active', btn === button));
+            renderArticles(sortArticles(currentArticles, currentArticlesSort));
+        });
+    });
     
     // 初始化自动刷新
     setupAutoRefresh();
