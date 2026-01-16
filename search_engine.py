@@ -1,9 +1,10 @@
 """信息搜索引擎模块"""
 import requests
 import feedparser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from datetime import datetime
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Tuple, Any
 from config import Config
 
 
@@ -151,63 +152,97 @@ class SearchEngine:
         articles = []
         successful_feeds = 0
         total_feed_articles = 0
-        
-        for feed_url in Config.RSS_FEEDS:
+
+        def process_feed(feed_url: str) -> Tuple[str, Dict[str, Any]]:
+            feed_host = feed_url.split("/")[2] if "/" in feed_url else feed_url
             try:
-                # 设置超时和headers
                 feed = feedparser.parse(feed_url)
-                
-                # 检查feed是否有效
-                if not hasattr(feed, 'entries') or len(feed.entries) == 0:
-                    print(f"  ⚠️ RSS源无文章: {feed_url.split('/')[2] if '/' in feed_url else feed_url}")
-                    continue
-                
-                successful_feeds += 1
+
+                if not hasattr(feed, "entries") or len(feed.entries) == 0:
+                    return feed_host, {
+                        "status": "empty",
+                        "articles": [],
+                        "matched_count": 0,
+                        "feed_articles_count": 0,
+                    }
+
                 feed_articles_count = len(feed.entries)
-                total_feed_articles += feed_articles_count
                 articles_per_feed = max(5, max_results // max(len(Config.RSS_FEEDS), 1))
                 matched_count = 0
-                
+                feed_articles = []
+
                 for entry in feed.entries[:articles_per_feed]:
                     title = entry.get("title", "")
                     summary = entry.get("summary", "") or entry.get("description", "")
-                    
+
                     if not title:
                         continue
-                    
-                    # 检查是否包含关键词
+
                     title_lower = title.lower()
                     summary_lower = summary.lower()
-                    
+
                     matched_keywords = [
-                        kw for kw in active_keywords 
+                        kw for kw in active_keywords
                         if kw and (kw.lower() in title_lower or kw.lower() in summary_lower)
                     ]
-                    
+
                     if not matched_keywords:
                         continue
-                    
+
                     matched_count += 1
-                    # 解析发布日期
                     published_at = self._parse_date(entry.get("published") or entry.get("updated"))
-                    
-                    articles.append({
+
+                    feed_articles.append({
                         "title": title,
                         "content": summary,
                         "url": entry.get("link", ""),
-                        "source": feed.feed.get("title", "") or feed_url.split("/")[2],
+                        "source": feed.feed.get("title", "") or feed_host,
                         "author": entry.get("author"),
                         "published_at": published_at,
                         "keywords": ", ".join(matched_keywords),
                     })
-                
-                if matched_count > 0:
-                    print(f"  ✅ {feed_url.split('/')[2] if '/' in feed_url else feed_url}: 找到 {matched_count} 篇匹配文章（共 {feed_articles_count} 篇）")
-                
+
+                return feed_host, {
+                    "status": "ok",
+                    "articles": feed_articles,
+                    "matched_count": matched_count,
+                    "feed_articles_count": feed_articles_count,
+                }
             except Exception as e:
-                # 显示错误信息以便调试
-                print(f"  ❌ RSS源访问失败: {feed_url.split('/')[2] if '/' in feed_url else feed_url} - {str(e)[:50]}")
-                continue
+                return feed_host, {
+                    "status": "error",
+                    "error": str(e),
+                    "articles": [],
+                    "matched_count": 0,
+                    "feed_articles_count": 0,
+                }
+
+        if Config.RSS_FEEDS:
+            max_workers = min(6, len(Config.RSS_FEEDS))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(process_feed, feed_url) for feed_url in Config.RSS_FEEDS]
+                for future in as_completed(futures):
+                    feed_host, result = future.result()
+                    status = result.get("status")
+
+                    if status == "empty":
+                        print(f"  ⚠️ RSS源无文章: {feed_host}")
+                        continue
+
+                    if status == "error":
+                        print(f"  ❌ RSS源访问失败: {feed_host} - {result.get('error', '')[:50]}")
+                        continue
+
+                    successful_feeds += 1
+                    feed_articles_count = result.get("feed_articles_count", 0)
+                    total_feed_articles += feed_articles_count
+                    matched_count = result.get("matched_count", 0)
+                    articles.extend(result.get("articles", []))
+
+                    if matched_count > 0:
+                        print(
+                            f"  ✅ {feed_host}: 找到 {matched_count} 篇匹配文章（共 {feed_articles_count} 篇）"
+                        )
         
         if successful_feeds == 0:
             print("⚠️ 警告：所有RSS源都无法访问，请检查网络连接或RSS源地址")
@@ -227,13 +262,18 @@ class SearchEngine:
         """搜索所有数据源"""
         all_articles = []
         
-        # 从NewsAPI搜索
-        newsapi_articles = self.search_newsapi("", max_results, theme=theme, keywords=keywords)
-        all_articles.extend(newsapi_articles)
-        
-        # 从RSS源搜索
-        rss_articles = self.search_rss_feeds(max_results, theme=theme, keywords=keywords)
-        all_articles.extend(rss_articles)
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(
+                    self.search_newsapi, "", max_results, theme=theme, keywords=keywords
+                ): "newsapi",
+                executor.submit(
+                    self.search_rss_feeds, max_results, theme=theme, keywords=keywords
+                ): "rss",
+            }
+
+            for future in as_completed(futures):
+                all_articles.extend(future.result())
         
         # 去重（基于URL）
         seen_urls = set()
