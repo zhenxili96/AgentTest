@@ -123,8 +123,21 @@ class Scheduler:
         print(f"\n[{beijing_now().strftime('%Y-%m-%d %H:%M:%S')}] 开始搜索新信息...")
         
         try:
-            # 搜索文章
-            articles = self.search_engine.search_all(Config.MAX_ARTICLES_PER_SEARCH)
+            # 从数据库获取活跃的挖掘关键词
+            active_keywords = db.get_mined_keywords(is_active=True, min_relevance=0.6, limit=30)
+            keyword_list = [kw.keyword for kw in active_keywords] if active_keywords else None
+            
+            if keyword_list:
+                print(f"使用 {len(keyword_list)} 个挖掘的关键词进行搜索: {', '.join(keyword_list[:5])}{'...' if len(keyword_list) > 5 else ''}")
+            else:
+                print("未找到活跃的挖掘关键词，使用默认关键词")
+            
+            # 搜索文章（使用挖掘的关键词）
+            articles = self.search_engine.search_all(
+                Config.MAX_ARTICLES_PER_SEARCH,
+                theme=Config.DEFAULT_THEME,
+                keywords=keyword_list
+            )
             print(f"找到 {len(articles)} 篇文章")
             
             # 过滤已存在的文章，避免重复评估

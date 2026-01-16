@@ -85,10 +85,18 @@ class MultiAgentOrchestrator:
 
     def _research_agent(self, context: AgentContext) -> Dict[str, Any]:
         """检索Agent：获取并评估文章"""
+        # 如果没有提供关键词，从数据库获取活跃的挖掘关键词
+        search_keywords = context.keywords
+        if not search_keywords:
+            active_keywords = db.get_mined_keywords(is_active=True, min_relevance=0.6, limit=30)
+            if active_keywords:
+                search_keywords = [kw.keyword for kw in active_keywords]
+                print(f"使用 {len(search_keywords)} 个挖掘的关键词进行搜索")
+        
         articles = self.search_engine.search_all(
             context.max_articles,
             theme=context.theme,
-            keywords=context.keywords,
+            keywords=search_keywords,
         )
 
         evaluated_articles: List[Dict[str, Any]] = []

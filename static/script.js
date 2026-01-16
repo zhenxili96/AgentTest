@@ -1,22 +1,34 @@
 // API基础URL
 const API_BASE = '/api';
 
-// 标签页切换
-document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const tabId = btn.getAttribute('data-tab');
-        switchTab(tabId);
-    });
-});
+// 确保脚本已加载
+console.log('script.js 已加载');
 
 function switchTab(tabId) {
+    console.log('switchTab被调用，tabId:', tabId);
+    if (!tabId) {
+        console.error('switchTab: tabId为空');
+        return;
+    }
+    
     // 更新按钮状态
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+    const activeBtn = document.querySelector(`[data-tab="${tabId}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
+    } else {
+        console.error('找不到标签页按钮:', tabId);
+    }
     
     // 更新内容显示
     document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-    document.getElementById(`${tabId}-tab`).classList.add('active');
+    const activeTab = document.getElementById(`${tabId}-tab`);
+    if (activeTab) {
+        activeTab.classList.add('active');
+        console.log('成功切换到标签页:', tabId);
+    } else {
+        console.error('找不到标签页内容:', `${tabId}-tab`);
+    }
     
     // 根据标签页加载数据
     if (tabId === 'articles') {
@@ -31,23 +43,13 @@ function switchTab(tabId) {
         refreshWorkflow();
     } else if (tabId === 'recommendation') {
         loadLatestRecommendation();
+    } else if (tabId === 'mine' || tabId === 'analyze') {
+        // 这些标签页不需要自动加载数据
+        console.log('切换到标签页:', tabId, '(无需自动加载数据)');
+    } else {
+        console.warn('未知的标签页ID:', tabId);
     }
 }
-
-// 数据源类型切换
-document.getElementById('source-type').addEventListener('change', (e) => {
-    const sourceType = e.target.value;
-    const articlesOptions = document.querySelectorAll('#articles-options');
-    const trendsOptions = document.getElementById('trends-options');
-    
-    if (sourceType === 'articles') {
-        articlesOptions.forEach(el => el.style.display = 'block');
-        trendsOptions.style.display = 'none';
-    } else {
-        articlesOptions.forEach(el => el.style.display = 'none');
-        trendsOptions.style.display = 'block';
-    }
-});
 
 // 挖掘关键词
 async function mineKeywords() {
@@ -222,39 +224,6 @@ function renderKeywordsBatch(keywords, container) {
     
     // 开始渲染
     renderNextBatch();
-}
-                <div class="keyword-item">
-                    <div class="keyword-header">
-                        <span class="keyword-title">${escapeHtml(kw.keyword)}</span>
-                        <span class="keyword-score">${kw.relevance_score.toFixed(2)}</span>
-                    </div>
-                    <div class="keyword-meta">
-                        <span>
-                            <strong>影响方向：</strong>
-                            <span class="impact-badge impact-${getImpactClass(kw.impact)}">
-                                ${kw.impact || '未知'}
-                            </span>
-                        </span>
-                        <span><strong>来源：</strong>${escapeHtml(kw.source || '未知')}</span>
-                        <span><strong>使用次数：</strong>${kw.usage_count || 0}</span>
-                        <span><strong>挖掘时间：</strong>${formatDate(kw.mined_at)}</span>
-                        <span><strong>状态：</strong>${kw.is_active ? '✅ 活跃' : '❌ 非活跃'}</span>
-                    </div>
-                    ${kw.reasoning ? `
-                        <div class="keyword-reasoning">
-                            <strong>分析说明：</strong>${escapeHtml(kw.reasoning)}
-                        </div>
-                    ` : ''}
-                </div>
-            `).join('');
-        } else {
-            throw new Error(result.error || '加载失败');
-        }
-    } catch (error) {
-        keywordsList.innerHTML = `<div class="result-area error" style="display: block;">
-            <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
-        </div>`;
-    }
 }
 
 // 分析关键词
@@ -795,12 +764,13 @@ let workflowRefreshInterval = null;
 
 async function refreshWorkflow() {
     try {
+        console.log('refreshWorkflow: 开始获取数据');
         // 并行获取统计数据、关键词数据、配置信息
         const [statsResponse, keywordsResponse, configResponse, schedulerResponse] = await Promise.all([
-            fetch(`${API_BASE}/stats`),
-            fetch(`${API_BASE}/keywords?limit=1000`),
-            fetch(`${API_BASE}/config`),
-            fetch(`${API_BASE}/scheduler/status`)
+            fetch(`${API_BASE}/stats`).catch(err => { console.error('获取stats失败:', err); throw err; }),
+            fetch(`${API_BASE}/keywords?limit=1000`).catch(err => { console.error('获取keywords失败:', err); throw err; }),
+            fetch(`${API_BASE}/config`).catch(err => { console.error('获取config失败:', err); throw err; }),
+            fetch(`${API_BASE}/scheduler/status`).catch(err => { console.error('获取scheduler/status失败:', err); throw err; })
         ]);
         
         const statsResult = await statsResponse.json();
@@ -852,6 +822,7 @@ async function refreshWorkflow() {
         if (schedulerResult.success && schedulerResult.scheduler) {
             renderSchedulerStatus(schedulerResult.scheduler);
         } else {
+            console.warn('调度器状态获取失败:', schedulerResult.error);
             renderSchedulerStatusError(schedulerResult.error || '无法获取调度器状态');
         }
         
@@ -1626,8 +1597,13 @@ function drawStockChart(data, symbol) {
 // 加载AI配置信息
 async function loadAIConfig() {
     try {
+        console.log('loadAIConfig: 开始加载');
         const response = await fetch(`${API_BASE}/config`);
+        if (!response.ok) {
+            throw new Error(`HTTP错误! status: ${response.status}`);
+        }
         const result = await response.json();
+        console.log('loadAIConfig: 获取到结果', result);
         
         if (result.success && result.ai_config) {
             const aiConfig = result.ai_config;
@@ -1663,6 +1639,37 @@ async function loadAIConfig() {
 
 // 监听自动刷新复选框变化
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOMContentLoaded: 开始初始化');
+    
+    // 标签页切换事件监听器
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    console.log('找到标签页按钮数量:', tabButtons.length);
+    tabButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tabId = btn.getAttribute('data-tab');
+            console.log('点击标签页:', tabId);
+            switchTab(tabId);
+        });
+    });
+    
+    // 数据源类型切换
+    const sourceTypeElement = document.getElementById('source-type');
+    if (sourceTypeElement) {
+        sourceTypeElement.addEventListener('change', (e) => {
+            const sourceType = e.target.value;
+            const articlesOptions = document.querySelectorAll('#articles-options');
+            const trendsOptions = document.getElementById('trends-options');
+            
+            if (sourceType === 'articles') {
+                articlesOptions.forEach(el => el.style.display = 'block');
+                if (trendsOptions) trendsOptions.style.display = 'none';
+            } else {
+                articlesOptions.forEach(el => el.style.display = 'none');
+                if (trendsOptions) trendsOptions.style.display = 'block';
+            }
+        });
+    }
+    
     const autoRefreshCheckbox = document.getElementById('auto-refresh');
     if (autoRefreshCheckbox) {
         autoRefreshCheckbox.addEventListener('change', setupAutoRefresh);
@@ -1704,8 +1711,14 @@ document.addEventListener('DOMContentLoaded', () => {
     setupWorkflowAutoRefresh();
     
     // 页面加载时加载工作流程图和统计数据
-    refreshWorkflow();
-    loadStats();
-    loadAIConfig();
-    loadLatestRecommendation();
+    console.log('开始加载页面数据');
+    try {
+        refreshWorkflow().catch(err => console.error('refreshWorkflow失败:', err));
+        loadStats().catch(err => console.error('loadStats失败:', err));
+        loadAIConfig().catch(err => console.error('loadAIConfig失败:', err));
+        loadLatestRecommendation().catch(err => console.error('loadLatestRecommendation失败:', err));
+        console.log('页面数据加载函数已调用');
+    } catch (error) {
+        console.error('初始化时发生错误:', error);
+    }
 });
