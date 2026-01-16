@@ -621,7 +621,9 @@ function renderArticles(articles) {
         return;
     }
 
-    articlesList.innerHTML = articles.map(article => `
+    articlesList.innerHTML = articles.map(article => {
+        const summary = extractSummary(article.ai_analysis);
+        return `
         <div class="article-item">
             <div class="article-header">
                 <div class="article-title">
@@ -631,6 +633,12 @@ function renderArticles(articles) {
                 </div>
                 <div class="article-score">${article.confidence_score.toFixed(2)}</div>
             </div>
+            ${summary ? `
+                <div class="article-summary">
+                    <span class="summary-icon">📌</span>
+                    <span class="summary-text">${escapeHtml(summary)}</span>
+                </div>
+            ` : ''}
             <div class="article-meta">
                 <span><strong>来源：</strong>${escapeHtml(article.source || '未知')}</span>
                 <span><strong>发布时间：</strong>${formatDate(article.published_at)}</span>
@@ -650,7 +658,7 @@ function renderArticles(articles) {
                 </div>
             ` : ''}
         </div>
-    `).join('');
+    `;}).join('');
 }
 
 async function loadArticles() {
@@ -702,6 +710,28 @@ async function loadArticles() {
     }
 }
 
+// 从AI分析中提取一句话总结
+function extractSummary(aiAnalysis) {
+    if (!aiAnalysis) return null;
+    
+    // 尝试匹配"一句话总结:"格式
+    const summaryMatch = aiAnalysis.match(/一句话总结[:：]\s*(.+?)(?:\n|分析说明|$)/);
+    if (summaryMatch && summaryMatch[1]) {
+        return summaryMatch[1].trim();
+    }
+    
+    // 如果没有找到格式化的总结，尝试提取分析说明的第一句话
+    const analysisMatch = aiAnalysis.match(/分析说明[:：]\s*(.+?)(?:[。！？\n]|$)/);
+    if (analysisMatch && analysisMatch[1]) {
+        const firstSentence = analysisMatch[1].trim();
+        if (firstSentence.length <= 100) {
+            return firstSentence;
+        }
+    }
+    
+    return null;
+}
+
 // 分批渲染文章（优化性能）
 function renderArticlesBatch(articles, container) {
     const batchSize = 10; // 每批渲染10个
@@ -715,6 +745,10 @@ function renderArticlesBatch(articles, container) {
         batch.forEach(article => {
             const div = document.createElement('div');
             div.className = 'article-item';
+            
+            // 提取一句话总结
+            const summary = extractSummary(article.ai_analysis);
+            
             div.innerHTML = `
                 <div class="article-header">
                     <div class="article-title">
@@ -724,6 +758,12 @@ function renderArticlesBatch(articles, container) {
                     </div>
                     <div class="article-score">${article.confidence_score.toFixed(2)}</div>
                 </div>
+                ${summary ? `
+                    <div class="article-summary">
+                        <span class="summary-icon">📌</span>
+                        <span class="summary-text">${escapeHtml(summary)}</span>
+                    </div>
+                ` : ''}
                 <div class="article-meta">
                     <span><strong>来源：</strong>${escapeHtml(article.source || '未知')}</span>
                     <span><strong>发布时间：</strong>${formatDate(article.published_at)}</span>
