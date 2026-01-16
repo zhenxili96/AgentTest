@@ -1,7 +1,7 @@
 """Flask API服务"""
 from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from database import db
 from search_engine import SearchEngine
 from confidence_evaluator import ConfidenceEvaluator
@@ -14,6 +14,33 @@ from config import Config
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
 CORS(app)
+
+# 北京时间时区（UTC+8）
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def to_beijing_time(dt):
+    """将datetime对象转换为北京时间（UTC+8）"""
+    if dt is None:
+        return None
+    # 如果datetime没有时区信息，假设它是UTC时间
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    # 转换为北京时间
+    return dt.astimezone(BEIJING_TZ)
+
+
+def beijing_now():
+    """获取当前北京时间"""
+    return datetime.now(BEIJING_TZ)
+
+
+def format_beijing_time(dt):
+    """格式化时间为北京时间的ISO格式字符串"""
+    if dt is None:
+        return None
+    beijing_dt = to_beijing_time(dt)
+    return beijing_dt.isoformat()
 
 search_engine = SearchEngine()
 evaluator = ConfidenceEvaluator()
@@ -35,7 +62,7 @@ def index():
 @app.route("/api/health", methods=["GET"])
 def health():
     """健康检查"""
-    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
+    return jsonify({"status": "ok", "timestamp": format_beijing_time(beijing_now())})
 
 
 @app.route("/api/scheduler/status", methods=["GET"])
@@ -73,14 +100,14 @@ def get_articles():
                 "url": article.url,
                 "source": article.source,
                 "author": article.author,
-                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "published_at": format_beijing_time(article.published_at),
                 "confidence_score": article.confidence_score,
                 "relevance_score": article.relevance_score,
                 "reliability_score": article.reliability_score,
                 "ai_analysis": article.ai_analysis,
                 "keywords": article.keywords,
                 "is_high_confidence": article.is_high_confidence,
-                "created_at": article.created_at.isoformat() if article.created_at else None,
+                "created_at": format_beijing_time(article.created_at),
             })
         
         return jsonify({
@@ -239,7 +266,7 @@ def get_latest_recommendation():
                 "risk_profile": record["risk_profile"],
                 "horizon_days": record["horizon_days"],
                 "max_articles": record["max_articles"],
-                "created_at": record["created_at"].isoformat(),
+                "created_at": format_beijing_time(record["created_at"]),
                 "payload": record["payload"],
             }
         })
@@ -320,8 +347,8 @@ def get_mined_keywords():
                 "source": kw.source,
                 "is_active": kw.is_active,
                 "usage_count": kw.usage_count or 0,
-                "mined_at": kw.mined_at.isoformat() if kw.mined_at else None,
-                "last_used_at": kw.last_used_at.isoformat() if kw.last_used_at else None,
+                "mined_at": format_beijing_time(kw.mined_at),
+                "last_used_at": format_beijing_time(kw.last_used_at),
             })
         
         return jsonify({
@@ -396,7 +423,7 @@ def get_invalid_keywords():
                 "source": kw.source,
                 "is_active": kw.is_active,
                 "usage_count": kw.usage_count or 0,
-                "mined_at": kw.mined_at.isoformat() if kw.mined_at else None,
+                "mined_at": format_beijing_time(kw.mined_at),
             })
         
         return jsonify({
@@ -440,7 +467,7 @@ def analyze_price_trend():
             keywords=filter_keywords
         )
         recent_articles = [a for a in articles if a.published_at and 
-                          (datetime.utcnow() - a.published_at).total_seconds() / 3600 <= hours]
+                          (beijing_now() - to_beijing_time(a.published_at)).total_seconds() / 3600 <= hours]
         
         if not recent_articles:
             return jsonify({
@@ -522,8 +549,8 @@ def get_identified_stocks():
                 "theme": stock.theme,
                 "source": stock.source,
                 "is_active": stock.is_active,
-                "identified_at": stock.identified_at.isoformat() if stock.identified_at else None,
-                "last_updated_at": stock.last_updated_at.isoformat() if stock.last_updated_at else None,
+                "identified_at": format_beijing_time(stock.identified_at),
+                "last_updated_at": format_beijing_time(stock.last_updated_at),
             })
         
         return jsonify({
@@ -581,7 +608,7 @@ def get_stock_price(symbol):
         
         # 如果数据库中有价格且不是强制刷新，且价格在1小时内，直接返回
         if latest_price and not force_refresh:
-            price_age_hours = (datetime.utcnow() - latest_price.timestamp).total_seconds() / 3600
+            price_age_hours = (beijing_now() - to_beijing_time(latest_price.timestamp)).total_seconds() / 3600
             if price_age_hours < 1:  # 1小时内的价格认为可用
                 return jsonify({
                     "success": True,
@@ -591,7 +618,7 @@ def get_stock_price(symbol):
                         "change": latest_price.change,
                         "change_percent": latest_price.change_percent,
                         "volume": latest_price.volume,
-                        "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                        "timestamp": format_beijing_time(latest_price.timestamp),
                         "source": latest_price.source or "database",
                     },
                     "cached": True
@@ -617,7 +644,7 @@ def get_stock_price(symbol):
                     "change": latest_price.change,
                     "change_percent": latest_price.change_percent,
                     "volume": latest_price.volume,
-                    "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                    "timestamp": format_beijing_time(latest_price.timestamp),
                     "source": latest_price.source or "database",
                 },
                 "cached": True,
@@ -658,7 +685,7 @@ def get_stock_prices_batch():
                 
                 # 如果数据库中有价格且不是强制刷新，且价格在1小时内，使用数据库价格
                 if latest_price and not force_refresh:
-                    price_age_hours = (datetime.utcnow() - latest_price.timestamp).total_seconds() / 3600
+                    price_age_hours = (beijing_now() - to_beijing_time(latest_price.timestamp)).total_seconds() / 3600
                     if price_age_hours < 1:  # 1小时内的价格认为可用
                         results[symbol_upper] = {
                             "success": True,
@@ -668,7 +695,7 @@ def get_stock_prices_batch():
                                 "change": latest_price.change,
                                 "change_percent": latest_price.change_percent,
                                 "volume": latest_price.volume,
-                                "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                                "timestamp": format_beijing_time(latest_price.timestamp),
                                 "source": latest_price.source or "database",
                             },
                             "cached": True
@@ -696,7 +723,7 @@ def get_stock_prices_batch():
                             "change": latest_price.change,
                             "change_percent": latest_price.change_percent,
                             "volume": latest_price.volume,
-                            "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                            "timestamp": format_beijing_time(latest_price.timestamp),
                             "source": latest_price.source or "database",
                         },
                         "cached": True
@@ -767,7 +794,7 @@ def get_stock_price_history(symbol):
                 "change": price.change,
                 "change_percent": price.change_percent,
                 "volume": price.volume,
-                "timestamp": price.timestamp.isoformat() if price.timestamp else None,
+                "timestamp": format_beijing_time(price.timestamp),
                 "source": price.source,
             })
         

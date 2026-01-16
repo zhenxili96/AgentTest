@@ -2,7 +2,7 @@
 import schedule
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from search_engine import SearchEngine
 from confidence_evaluator import ConfidenceEvaluator
 from keyword_miner import KeywordMiner
@@ -11,6 +11,33 @@ from stock_fetcher import StockFetcher
 from multi_agent import MultiAgentOrchestrator
 from database import db
 from config import Config
+
+# 北京时间时区（UTC+8）
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def to_beijing_time(dt):
+    """将datetime对象转换为北京时间（UTC+8）"""
+    if dt is None:
+        return None
+    # 如果datetime没有时区信息，假设它是UTC时间
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    # 转换为北京时间
+    return dt.astimezone(BEIJING_TZ)
+
+
+def beijing_now():
+    """获取当前北京时间"""
+    return datetime.now(BEIJING_TZ)
+
+
+def format_beijing_time(dt):
+    """格式化时间为北京时间的ISO格式字符串"""
+    if dt is None:
+        return None
+    beijing_dt = to_beijing_time(dt)
+    return beijing_dt.isoformat()
 
 
 class Scheduler:
@@ -63,7 +90,7 @@ class Scheduler:
         }
 
     def _run_task(self, task_name, task_func):
-        start_time = datetime.utcnow()
+        start_time = beijing_now()
         with self.lock:
             state = self.task_state[task_name]
             state["is_running"] = True
@@ -78,7 +105,7 @@ class Scheduler:
             error_message = str(exc)
             print(f"任务 {task_name} 执行出错: {error_message}")
         finally:
-            end_time = datetime.utcnow()
+            end_time = beijing_now()
             duration = (end_time - start_time).total_seconds()
             with self.lock:
                 state = self.task_state[task_name]
@@ -93,7 +120,7 @@ class Scheduler:
     
     def search_and_evaluate(self):
         """执行搜索和评估任务"""
-        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始搜索新信息...")
+        print(f"\n[{beijing_now().strftime('%Y-%m-%d %H:%M:%S')}] 开始搜索新信息...")
         
         try:
             # 搜索文章
@@ -143,7 +170,7 @@ class Scheduler:
 
     def mine_keywords(self):
         """从高置信度文章中自动挖掘关键词"""
-        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始挖掘关键词...")
+        print(f"\n[{beijing_now().strftime('%Y-%m-%d %H:%M:%S')}] 开始挖掘关键词...")
 
         try:
             keywords = self.keyword_miner.mine_keywords_from_articles(
@@ -168,7 +195,7 @@ class Scheduler:
     
     def identify_stocks(self):
         """执行股票识别任务"""
-        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始识别相关股票...")
+        print(f"\n[{beijing_now().strftime('%Y-%m-%d %H:%M:%S')}] 开始识别相关股票...")
         
         try:
             # 从高置信度关键词中识别股票
@@ -209,7 +236,7 @@ class Scheduler:
     
     def update_stock_prices(self):
         """更新股票价格"""
-        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始更新股票价格...")
+        print(f"\n[{beijing_now().strftime('%Y-%m-%d %H:%M:%S')}] 开始更新股票价格...")
         
         try:
             # 获取所有活跃的股票
@@ -234,7 +261,7 @@ class Scheduler:
 
     def generate_recommendation(self):
         """生成投资建议并保存"""
-        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始生成投资建议...")
+        print(f"\n[{beijing_now().strftime('%Y-%m-%d %H:%M:%S')}] 开始生成投资建议...")
 
         try:
             result = self.multi_agent.run(
@@ -292,7 +319,7 @@ class Scheduler:
         ).minutes.do(lambda: self._run_task("generate_recommendation", self.generate_recommendation))
         
         self.running = True
-        self.started_at = datetime.utcnow()
+        self.started_at = beijing_now()
         
         def run_scheduler():
             while self.running:
@@ -317,7 +344,7 @@ class Scheduler:
 
     def get_status(self):
         """获取调度器状态"""
-        now = datetime.utcnow()
+        now = beijing_now()
         tasks = []
         with self.lock:
             for task_name, definition in self.task_definitions.items():
@@ -328,18 +355,18 @@ class Scheduler:
                     "name": task_name,
                     "label": definition["label"],
                     "interval": definition["interval"],
-                    "last_run": state["last_run"].isoformat() if state["last_run"] else None,
-                    "last_started_at": state["last_started_at"].isoformat() if state["last_started_at"] else None,
+                    "last_run": format_beijing_time(state["last_run"]),
+                    "last_started_at": format_beijing_time(state["last_started_at"]),
                     "last_duration_seconds": state["last_duration_seconds"],
                     "last_status": state["last_status"],
                     "last_error": state["last_error"],
                     "is_running": state["is_running"],
-                    "next_run": next_run.isoformat() if next_run else None,
+                    "next_run": format_beijing_time(next_run),
                 })
 
         return {
             "running": self.running,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "started_at": format_beijing_time(self.started_at),
             "server_time": now.isoformat(),
             "tasks": tasks,
         }
