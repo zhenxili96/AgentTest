@@ -207,7 +207,42 @@ def generate_recommendation():
             max_articles=max_articles,
         )
 
+        db.add_recommendation({
+            "theme": result["context"]["theme"],
+            "keywords": ",".join(result["context"].get("keywords") or []),
+            "risk_profile": result["context"]["risk_profile"],
+            "horizon_days": result["context"]["horizon_days"],
+            "max_articles": result["context"]["max_articles"],
+            "payload": result,
+        })
+
         return jsonify({"success": True, "data": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analysis/recommendation/latest", methods=["GET"])
+def get_latest_recommendation():
+    """获取最新投资建议"""
+    try:
+        theme = request.args.get("theme")
+        record = db.get_latest_recommendation(theme=theme)
+        if not record:
+            return jsonify({"success": True, "data": None})
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "id": record["id"],
+                "theme": record["theme"],
+                "keywords": record["keywords"],
+                "risk_profile": record["risk_profile"],
+                "horizon_days": record["horizon_days"],
+                "max_articles": record["max_articles"],
+                "created_at": record["created_at"].isoformat(),
+                "payload": record["payload"],
+            }
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

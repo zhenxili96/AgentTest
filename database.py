@@ -1,10 +1,11 @@
 """数据库模型和操作"""
 import os
+import json
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, func, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timedelta
-from typing import List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from config import Config
 
 Base = declarative_base()
@@ -92,6 +93,23 @@ class StockPrice(Base):
     
     def __repr__(self):
         return f"<StockPrice(id={self.id}, symbol='{self.symbol}', type='{self.stock_type}', price={self.price}, timestamp={self.timestamp})>"
+
+
+class InvestmentRecommendation(Base):
+    """投资建议结果模型"""
+    __tablename__ = "investment_recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    theme = Column(String(100), nullable=False, index=True)
+    keywords = Column(Text)
+    risk_profile = Column(String(50), nullable=False)
+    horizon_days = Column(Integer, nullable=False)
+    max_articles = Column(Integer, nullable=False)
+    payload = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    def __repr__(self):
+        return f"<InvestmentRecommendation(id={self.id}, theme='{self.theme}', created_at={self.created_at})>"
 
 
 class Database:
@@ -241,6 +259,56 @@ class Database:
         try:
             results = session.query(Article.url).filter(Article.url.in_(urls)).all()
             return {row[0] for row in results}
+        finally:
+            session.close()
+
+    def add_recommendation(self, data: Dict[str, Any]) -> Optional[InvestmentRecommendation]:
+        """保存投资建议结果"""
+        session = self.get_session()
+        try:
+            record = InvestmentRecommendation(
+                theme=data["theme"],
+                keywords=data.get("keywords"),
+                risk_profile=data["risk_profile"],
+                horizon_days=data["horizon_days"],
+                max_articles=data["max_articles"],
+                payload=json.dumps(data["payload"], ensure_ascii=False),
+            )
+            session.add(record)
+            session.commit()
+            session.refresh(record)
+            return record
+        except Exception as e:
+            session.rollback()
+            print(f"保存投资建议时出错: {e}")
+            return None
+        finally:
+            session.close()
+
+    def get_latest_recommendation(self, theme: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """获取最新投资建议"""
+        session = self.get_session()
+        try:
+            query = session.query(InvestmentRecommendation)
+            if theme:
+                query = query.filter_by(theme=theme)
+            record = query.order_by(InvestmentRecommendation.created_at.desc()).first()
+            if not record:
+                return None
+            payload = json.loads(record.payload)
+            return {
+                "id": record.id,
+                "theme": record.theme,
+                "keywords": record.keywords,
+                "risk_profile": record.risk_profile,
+                "horizon_days": record.horizon_days,
+                "max_articles": record.max_articles,
+                "payload": payload,
+                "created_at": record.created_at,
+            }
+        except Exception as e:
+            print(f"读取投资建议时出错: {e}")
+            return None
         finally:
             session.close()
     
