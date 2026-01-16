@@ -8,6 +8,7 @@ from confidence_evaluator import ConfidenceEvaluator
 from keyword_miner import KeywordMiner
 from stock_identifier import StockIdentifier
 from stock_fetcher import StockFetcher
+from multi_agent import MultiAgentOrchestrator
 from database import db
 from config import Config
 
@@ -21,6 +22,7 @@ class Scheduler:
         self.keyword_miner = KeywordMiner()
         self.stock_identifier = StockIdentifier()
         self.stock_fetcher = StockFetcher()
+        self.multi_agent = MultiAgentOrchestrator()
         self.running = False
         self.thread = None
         self.started_at = None
@@ -31,6 +33,10 @@ class Scheduler:
                 "label": "信息检索与评估",
                 "interval": f"每 {Config.SEARCH_INTERVAL_MINUTES} 分钟",
             },
+            "mine_keywords": {
+                "label": "关键词自动挖掘",
+                "interval": f"每 {Config.KEYWORD_MINING_INTERVAL_HOURS} 小时",
+            },
             "identify_stocks": {
                 "label": "股票识别",
                 "interval": "每 2 小时",
@@ -38,6 +44,10 @@ class Scheduler:
             "update_stock_prices": {
                 "label": "股票价格更新",
                 "interval": "每 30 分钟",
+            },
+            "generate_recommendation": {
+                "label": "投资建议生成",
+                "interval": f"每 {Config.RECOMMENDATION_INTERVAL_MINUTES} 分钟",
             },
         }
         self.task_state = {
@@ -130,6 +140,31 @@ class Scheduler:
                 print(f"已跳过 {skipped_count} 篇已存在文章，避免重复评估")
         except Exception as e:
             print(f"搜索和评估过程中出错: {e}")
+
+    def mine_keywords(self):
+        """从高置信度文章中自动挖掘关键词"""
+        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始挖掘关键词...")
+
+        try:
+            keywords = self.keyword_miner.mine_keywords_from_articles(
+                hours=48,
+                min_confidence=Config.MIN_CONFIDENCE_SCORE,
+                limit=50,
+                theme=Config.DEFAULT_THEME,
+            )
+
+            if not keywords:
+                print("没有挖掘到新的关键词")
+                return
+
+            saved_count = 0
+            for kw_data in keywords:
+                if db.add_mined_keyword(kw_data):
+                    saved_count += 1
+
+            print(f"完成！挖掘 {len(keywords)} 个关键词，保存 {saved_count} 个")
+        except Exception as e:
+            print(f"关键词挖掘过程中出错: {e}")
     
     def identify_stocks(self):
         """执行股票识别任务"""
@@ -196,21 +231,54 @@ class Scheduler:
             print(f"完成！更新了 {updated_count} 只股票的价格")
         except Exception as e:
             print(f"更新股票价格过程中出错: {e}")
+
+    def generate_recommendation(self):
+        """生成投资建议并保存"""
+        print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 开始生成投资建议...")
+
+        try:
+            result = self.multi_agent.run(
+                theme=Config.DEFAULT_THEME,
+                risk_profile="balanced",
+                horizon_days=30,
+                max_articles=Config.AGENT_MAX_ARTICLES,
+            )
+
+            db.add_recommendation({
+                "theme": result["context"]["theme"],
+                "keywords": ",".join(result["context"].get("keywords") or []),
+                "risk_profile": result["context"]["risk_profile"],
+                "horizon_days": result["context"]["horizon_days"],
+                "max_articles": result["context"]["max_articles"],
+                "payload": result,
+            })
+
+            print("投资建议生成完成并已保存")
+        except Exception as e:
+            print(f"生成投资建议过程中出错: {e}")
+
+    def _run_startup_pipeline(self):
+        """程序启动时执行完整流程"""
+        print("\n启动后自动执行全流程任务...")
+        self._run_task("search_and_evaluate", self.search_and_evaluate)
+        self._run_task("mine_keywords", self.mine_keywords)
+        self._run_task("identify_stocks", self.identify_stocks)
+        self._run_task("update_stock_prices", self.update_stock_prices)
+        self._run_task("generate_recommendation", self.generate_recommendation)
     
     def start(self, run_immediately: bool = True):
         """启动定时任务"""
         if self.running:
             print("调度器已在运行")
             return
-        
-        # 立即执行一次（可选）
-        if run_immediately:
-            self._run_task("search_and_evaluate", self.search_and_evaluate)
-        
+
         # 设置定时任务
         self.jobs["search_and_evaluate"] = schedule.every(
             Config.SEARCH_INTERVAL_MINUTES
         ).minutes.do(lambda: self._run_task("search_and_evaluate", self.search_and_evaluate))
+        self.jobs["mine_keywords"] = schedule.every(
+            Config.KEYWORD_MINING_INTERVAL_HOURS
+        ).hours.do(lambda: self._run_task("mine_keywords", self.mine_keywords))
         # 股票识别任务（每2小时执行一次）
         self.jobs["identify_stocks"] = schedule.every(2).hours.do(
             lambda: self._run_task("identify_stocks", self.identify_stocks)
@@ -219,6 +287,9 @@ class Scheduler:
         self.jobs["update_stock_prices"] = schedule.every(30).minutes.do(
             lambda: self._run_task("update_stock_prices", self.update_stock_prices)
         )
+        self.jobs["generate_recommendation"] = schedule.every(
+            Config.RECOMMENDATION_INTERVAL_MINUTES
+        ).minutes.do(lambda: self._run_task("generate_recommendation", self.generate_recommendation))
         
         self.running = True
         self.started_at = datetime.utcnow()
@@ -230,6 +301,10 @@ class Scheduler:
         
         self.thread = threading.Thread(target=run_scheduler, daemon=True)
         self.thread.start()
+
+        # 立即执行完整流程（可选）
+        if run_immediately:
+            threading.Thread(target=self._run_startup_pipeline, daemon=True).start()
         
         print(f"定时任务已启动，每 {Config.SEARCH_INTERVAL_MINUTES} 分钟执行一次搜索")
     

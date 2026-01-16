@@ -327,6 +327,7 @@
             <div class="card">
                 <h2>多Agent投资建议</h2>
                 <p class="workflow-subtitle">基于多环节检索、验证与归因生成建议</p>
+                <p class="workflow-subtitle" id="recommendation-status">系统启动后将自动生成最新建议，并在此处自动展示。</p>
 
                 <div class="form-group">
                     <label for="recommend-theme">主题</label>
@@ -357,7 +358,7 @@
                     <input type="number" id="recommend-max-articles" value="40" min="10" max="100">
                 </div>
 
-                <button class="btn btn-primary" id="recommend-submit" onclick="generateRecommendation()">生成建议</button>
+                <button class="btn btn-primary" id="recommend-submit" onclick="generateRecommendation()">重新生成建议</button>
 
                 <div id="recommendation-result" class="recommendation-result"></div>
             </div>

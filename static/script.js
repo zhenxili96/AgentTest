@@ -29,6 +29,8 @@ function switchTab(tabId) {
         loadStats();
     } else if (tabId === 'workflow') {
         refreshWorkflow();
+    } else if (tabId === 'recommendation') {
+        loadLatestRecommendation();
     }
 }
 
@@ -293,7 +295,10 @@ async function generateRecommendation() {
             throw new Error(result.error || '生成失败');
         }
 
-        renderRecommendation(result.data);
+        renderRecommendation(result.data, {
+            source: 'manual',
+            created_at: result.data.generated_at,
+        });
     } catch (error) {
         resultArea.className = 'recommendation-result error';
         resultArea.innerHTML = `<h3>❌ 生成失败</h3><p>${escapeHtml(error.message)}</p>`;
@@ -303,12 +308,62 @@ async function generateRecommendation() {
     }
 }
 
-function renderRecommendation(data) {
+async function loadLatestRecommendation() {
+    const resultArea = document.getElementById('recommendation-result');
+    if (!resultArea) return;
+
+    const themeInput = document.getElementById('recommend-theme');
+    const theme = themeInput ? themeInput.value.trim() : '';
+    const query = theme ? `?theme=${encodeURIComponent(theme)}` : '';
+
+    resultArea.className = 'recommendation-result loading';
+    resultArea.innerHTML = '<div class="loading">加载最新投资建议...</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/analysis/recommendation/latest${query}`);
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || '加载失败');
+        }
+
+        if (!result.data) {
+            updateRecommendationStatus('暂无自动生成建议，系统正在后台生成中。');
+            resultArea.className = 'recommendation-result';
+            resultArea.innerHTML = '<div class="loading">暂无建议，请稍后刷新或手动生成。</div>';
+            return;
+        }
+
+        updateRecommendationStatus(`最新建议生成时间：${formatDate(result.data.created_at)}（自动生成）`);
+        renderRecommendation(result.data.payload, {
+            source: 'auto',
+            created_at: result.data.created_at,
+        });
+    } catch (error) {
+        updateRecommendationStatus('加载最新建议失败，请稍后再试。');
+        resultArea.className = 'recommendation-result error';
+        resultArea.innerHTML = `<h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>`;
+    }
+}
+
+function updateRecommendationStatus(message) {
+    const statusElement = document.getElementById('recommendation-status');
+    if (statusElement) {
+        statusElement.textContent = message;
+    }
+}
+
+function renderRecommendation(data, meta = {}) {
     const resultArea = document.getElementById('recommendation-result');
     if (!data) {
         resultArea.className = 'recommendation-result error';
         resultArea.innerHTML = '<h3>❌ 未返回有效数据</h3>';
         return;
+    }
+
+    if (meta.created_at) {
+        const prefix = meta.source === 'manual' ? '手动生成时间' : '最新建议生成时间';
+        updateRecommendationStatus(`${prefix}：${formatDate(meta.created_at)}`);
     }
 
     const verification = data.verification || {};
@@ -1362,4 +1417,5 @@ document.addEventListener('DOMContentLoaded', () => {
     refreshWorkflow();
     loadStats();
     loadAIConfig();
+    loadLatestRecommendation();
 });

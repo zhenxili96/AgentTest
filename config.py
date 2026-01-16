@@ -47,6 +47,8 @@ class Config:
     SEARCH_INTERVAL_MINUTES: int = int(os.getenv("SEARCH_INTERVAL_MINUTES", "30"))
     MAX_ARTICLES_PER_SEARCH: int = int(os.getenv("MAX_ARTICLES_PER_SEARCH", "50"))
     MIN_CONFIDENCE_SCORE: float = float(os.getenv("MIN_CONFIDENCE_SCORE", "0.7"))
+    KEYWORD_MINING_INTERVAL_HOURS: int = int(os.getenv("KEYWORD_MINING_INTERVAL_HOURS", "4"))
+    RECOMMENDATION_INTERVAL_MINUTES: int = int(os.getenv("RECOMMENDATION_INTERVAL_MINUTES", "120"))
 
     # 多Agent配置
     AGENT_MAX_ARTICLES: int = int(os.getenv("AGENT_MAX_ARTICLES", "40"))

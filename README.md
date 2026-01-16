@@ -34,6 +34,8 @@ cp .env.example .env
 - `STOCK_SYMBOLS`: 股市代码列表（可选，用逗号分隔，如 SPY,QQQ,DIA）
 - `SEARCH_INTERVAL_MINUTES`: 搜索间隔（分钟）
 - `MIN_CONFIDENCE_SCORE`: 最小置信度分数阈值（0-1）
+- `KEYWORD_MINING_INTERVAL_HOURS`: 关键词自动挖掘间隔（小时）
+- `RECOMMENDATION_INTERVAL_MINUTES`: 投资建议自动生成间隔（分钟）
 
 **注意**：如果无法访问NewsAPI，程序仍然可以正常工作，会自动使用内置的RSS源。详见 `docs/NEWSAPI_ALTERNATIVE.md`
 
@@ -48,7 +50,7 @@ python main.py
 ```
 
 程序会：
-- 立即执行一次搜索
+- 启动后立即执行完整流程（搜索/评估 → 关键词挖掘 → 股票识别 → 价格更新 → 投资建议）
 - 然后每30分钟（可配置）自动执行一次搜索
 - 将所有高置信度的信息保存到数据库
 
@@ -108,6 +110,11 @@ POST /api/analysis/recommendation
   "horizon_days": 30,
   "max_articles": 40
 }
+```
+
+#### 7. 获取最新投资建议
+```
+GET /api/analysis/recommendation/latest
 ```
 
 ### 方式3：使用示例脚本
