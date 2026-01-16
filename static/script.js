@@ -527,7 +527,7 @@ function escapeHtml(text) {
 function formatDate(dateString) {
     if (!dateString) return '未知';
     const date = new Date(dateString);
-    return date.toLocaleString('zh-CN');
+    return date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
 }
 
 function getImpactClass(impact) {
