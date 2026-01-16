@@ -571,23 +571,44 @@ def identify_stocks():
 
 @app.route("/api/stocks/<symbol>/price", methods=["GET"])
 def get_stock_price(symbol):
-    """获取股票实时价格"""
+    """获取股票实时价格（优先使用数据库，可选实时更新）"""
     try:
         stock_type = request.args.get("type")  # 可选：us_stock, a_stock, futures
+        force_refresh = request.args.get("refresh", "false").lower() == "true"  # 是否强制刷新
         
         # 先尝试从数据库获取最新价格
         latest_price = db.get_latest_stock_price(symbol)
         
-        # 尝试获取实时价格
-        price_data = stock_fetcher.fetch_realtime_price(symbol, stock_type=stock_type)
+        # 如果数据库中有价格且不是强制刷新，且价格在1小时内，直接返回
+        if latest_price and not force_refresh:
+            price_age_hours = (datetime.utcnow() - latest_price.timestamp).total_seconds() / 3600
+            if price_age_hours < 1:  # 1小时内的价格认为可用
+                return jsonify({
+                    "success": True,
+                    "price": {
+                        "symbol": latest_price.symbol,
+                        "price": latest_price.price,
+                        "change": latest_price.change,
+                        "change_percent": latest_price.change_percent,
+                        "volume": latest_price.volume,
+                        "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                        "source": latest_price.source or "database",
+                    },
+                    "cached": True
+                })
         
-        if price_data:
-            return jsonify({
-                "success": True,
-                "price": price_data,
-            })
-        elif latest_price:
-            # 如果无法获取实时价格，返回数据库中的最新价格
+        # 尝试获取实时价格（仅在强制刷新或数据库无数据时）
+        if force_refresh or not latest_price:
+            price_data = stock_fetcher.fetch_realtime_price(symbol, stock_type=stock_type)
+            if price_data:
+                return jsonify({
+                    "success": True,
+                    "price": price_data,
+                    "cached": False
+                })
+        
+        # 如果无法获取实时价格，返回数据库中的最新价格
+        if latest_price:
             return jsonify({
                 "success": True,
                 "price": {
@@ -599,6 +620,7 @@ def get_stock_price(symbol):
                     "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
                     "source": latest_price.source or "database",
                 },
+                "cached": True,
                 "note": "使用数据库中的最新价格（可能不是实时数据）"
             })
         else:
@@ -610,6 +632,92 @@ def get_stock_price(symbol):
             }), 200  # 改为200，让前端可以处理错误信息
     except Exception as e:
         return jsonify({"success": False, "error": str(e), "symbol": symbol.upper()}), 200
+
+
+@app.route("/api/stocks/prices/batch", methods=["POST"])
+def get_stock_prices_batch():
+    """批量获取股票价格（优先使用数据库）"""
+    try:
+        data = request.get_json() or {}
+        symbols = data.get("symbols", [])  # 股票代码列表
+        stock_types = data.get("stock_types", {})  # {symbol: stock_type} 映射
+        force_refresh = data.get("force_refresh", False)  # 是否强制刷新
+        
+        if not symbols:
+            return jsonify({"success": False, "error": "请提供股票代码列表"}), 400
+        
+        results = {}
+        
+        # 批量从数据库获取最新价格
+        for symbol in symbols:
+            symbol_upper = symbol.upper()
+            stock_type = stock_types.get(symbol) or stock_types.get(symbol_upper)
+            
+            try:
+                latest_price = db.get_latest_stock_price(symbol_upper)
+                
+                # 如果数据库中有价格且不是强制刷新，且价格在1小时内，使用数据库价格
+                if latest_price and not force_refresh:
+                    price_age_hours = (datetime.utcnow() - latest_price.timestamp).total_seconds() / 3600
+                    if price_age_hours < 1:  # 1小时内的价格认为可用
+                        results[symbol_upper] = {
+                            "success": True,
+                            "price": {
+                                "symbol": latest_price.symbol,
+                                "price": latest_price.price,
+                                "change": latest_price.change,
+                                "change_percent": latest_price.change_percent,
+                                "volume": latest_price.volume,
+                                "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                                "source": latest_price.source or "database",
+                            },
+                            "cached": True
+                        }
+                        continue
+                
+                # 尝试获取实时价格（仅在强制刷新或数据库无数据时）
+                if force_refresh or not latest_price:
+                    price_data = stock_fetcher.fetch_realtime_price(symbol_upper, stock_type=stock_type)
+                    if price_data:
+                        results[symbol_upper] = {
+                            "success": True,
+                            "price": price_data,
+                            "cached": False
+                        }
+                        continue
+                
+                # 如果无法获取实时价格，使用数据库中的最新价格
+                if latest_price:
+                    results[symbol_upper] = {
+                        "success": True,
+                        "price": {
+                            "symbol": latest_price.symbol,
+                            "price": latest_price.price,
+                            "change": latest_price.change,
+                            "change_percent": latest_price.change_percent,
+                            "volume": latest_price.volume,
+                            "timestamp": latest_price.timestamp.isoformat() if latest_price.timestamp else None,
+                            "source": latest_price.source or "database",
+                        },
+                        "cached": True
+                    }
+                else:
+                    results[symbol_upper] = {
+                        "success": False,
+                        "error": "无法获取股票价格"
+                    }
+            except Exception as e:
+                results[symbol_upper] = {
+                    "success": False,
+                    "error": str(e)
+                }
+        
+        return jsonify({
+            "success": True,
+            "results": results
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route("/api/stocks/<symbol>/chart", methods=["GET"])

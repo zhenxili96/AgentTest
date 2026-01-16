@@ -120,10 +120,11 @@ async function mineKeywords() {
     }
 }
 
-// 加载关键词列表
+// 加载关键词列表（优化：立即显示加载状态，快速渲染）
 async function loadKeywords() {
     const keywordsList = document.getElementById('keywords-list');
-    keywordsList.innerHTML = '<div class="loading">加载中</div>';
+    // 显示加载状态，但使用更轻量的提示
+    keywordsList.innerHTML = '<div class="loading">加载中...</div>';
     
     const active = document.getElementById('filter-active').value;
     const minRelevance = parseFloat(document.getElementById('filter-relevance').value);
@@ -135,7 +136,15 @@ async function loadKeywords() {
     if (limit) params.append('limit', limit);
     
     try {
-        const response = await fetch(`${API_BASE}/keywords?${params.toString()}`);
+        // 使用AbortController设置超时，避免长时间等待
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+        
+        const response = await fetch(`${API_BASE}/keywords?${params.toString()}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         const result = await response.json();
         
         if (result.success) {
@@ -144,7 +153,76 @@ async function loadKeywords() {
                 return;
             }
             
-            keywordsList.innerHTML = result.keywords.map(kw => `
+            // 分批渲染，避免一次性渲染大量DOM导致卡顿
+            keywordsList.innerHTML = ''; // 清空加载提示
+            renderKeywordsBatch(result.keywords, keywordsList);
+        } else {
+            throw new Error(result.error || '加载失败');
+        }
+    } catch (error) {
+        if (error.name === 'AbortError') {
+            keywordsList.innerHTML = `<div class="result-area error" style="display: block;">
+                <h3>⏱️ 请求超时</h3><p>加载时间过长，请尝试减少数量限制或调整筛选条件</p>
+            </div>`;
+        } else {
+            keywordsList.innerHTML = `<div class="result-area error" style="display: block;">
+                <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
+            </div>`;
+        }
+    }
+}
+
+// 分批渲染关键词（优化性能）
+function renderKeywordsBatch(keywords, container) {
+    const batchSize = 20; // 每批渲染20个
+    let index = 0;
+    
+    function renderNextBatch() {
+        const endIndex = Math.min(index + batchSize, keywords.length);
+        const batch = keywords.slice(index, endIndex);
+        
+        const fragment = document.createDocumentFragment();
+        batch.forEach(kw => {
+            const div = document.createElement('div');
+            div.className = 'keyword-item';
+            div.innerHTML = `
+                <div class="keyword-header">
+                    <span class="keyword-title">${escapeHtml(kw.keyword)}</span>
+                    <span class="keyword-score">${kw.relevance_score.toFixed(2)}</span>
+                </div>
+                <div class="keyword-meta">
+                    <span>
+                        <strong>影响方向：</strong>
+                        <span class="impact-badge impact-${getImpactClass(kw.impact)}">
+                            ${kw.impact || '未知'}
+                        </span>
+                    </span>
+                    <span><strong>来源：</strong>${escapeHtml(kw.source || '未知')}</span>
+                    <span><strong>使用次数：</strong>${kw.usage_count || 0}</span>
+                    <span><strong>挖掘时间：</strong>${formatDate(kw.mined_at)}</span>
+                    <span><strong>状态：</strong>${kw.is_active ? '✅ 活跃' : '❌ 非活跃'}</span>
+                </div>
+                ${kw.reasoning ? `
+                    <div class="keyword-reasoning">
+                        <strong>分析说明：</strong>${escapeHtml(kw.reasoning)}
+                    </div>
+                ` : ''}
+            `;
+            fragment.appendChild(div);
+        });
+        
+        container.appendChild(fragment);
+        index = endIndex;
+        
+        // 如果还有更多，使用requestAnimationFrame继续渲染
+        if (index < keywords.length) {
+            requestAnimationFrame(renderNextBatch);
+        }
+    }
+    
+    // 开始渲染
+    renderNextBatch();
+}
                 <div class="keyword-item">
                     <div class="keyword-header">
                         <span class="keyword-title">${escapeHtml(kw.keyword)}</span>
@@ -608,7 +686,7 @@ function renderArticles(articles) {
 
 async function loadArticles() {
     const articlesList = document.getElementById('articles-list');
-    articlesList.innerHTML = '<div class="loading">加载中</div>';
+    articlesList.innerHTML = '<div class="loading">加载中...</div>';
     
     const limit = parseInt(document.getElementById('articles-limit').value) || 20;
     const minScore = parseFloat(document.getElementById('articles-min-score').value) || 0.7;
@@ -619,21 +697,97 @@ async function loadArticles() {
     params.append('limit', limit);
     
     try {
-        const response = await fetch(`${API_BASE}/articles?${params.toString()}`);
+        // 使用AbortController设置超时，避免长时间等待
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+        
+        const response = await fetch(`${API_BASE}/articles?${params.toString()}`, {
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
         const result = await response.json();
         
         if (result.success) {
             currentArticles = result.articles || [];
             const sortedArticles = sortArticles(currentArticles, currentArticlesSort);
-            renderArticles(sortedArticles);
+            
+            // 清空加载提示
+            articlesList.innerHTML = '';
+            
+            // 分批渲染文章，避免一次性渲染大量DOM导致卡顿
+            renderArticlesBatch(sortedArticles, articlesList);
         } else {
             throw new Error(result.error || '加载失败');
         }
     } catch (error) {
-        articlesList.innerHTML = `<div class="result-area error" style="display: block;">
-            <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
-        </div>`;
+        if (error.name === 'AbortError') {
+            articlesList.innerHTML = `<div class="result-area error" style="display: block;">
+                <h3>⏱️ 请求超时</h3><p>加载时间过长，请尝试减少显示数量或调整筛选条件</p>
+            </div>`;
+        } else {
+            articlesList.innerHTML = `<div class="result-area error" style="display: block;">
+                <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
+            </div>`;
+        }
     }
+}
+
+// 分批渲染文章（优化性能）
+function renderArticlesBatch(articles, container) {
+    const batchSize = 10; // 每批渲染10个
+    let index = 0;
+    
+    function renderNextBatch() {
+        const endIndex = Math.min(index + batchSize, articles.length);
+        const batch = articles.slice(index, endIndex);
+        
+        const fragment = document.createDocumentFragment();
+        batch.forEach(article => {
+            const div = document.createElement('div');
+            div.className = 'article-item';
+            div.innerHTML = `
+                <div class="article-header">
+                    <div class="article-title">
+                        <a href="${escapeHtml(article.url)}" target="_blank" rel="noopener noreferrer">
+                            ${escapeHtml(article.title)}
+                        </a>
+                    </div>
+                    <div class="article-score">${article.confidence_score.toFixed(2)}</div>
+                </div>
+                <div class="article-meta">
+                    <span><strong>来源：</strong>${escapeHtml(article.source || '未知')}</span>
+                    <span><strong>发布时间：</strong>${formatDate(article.published_at)}</span>
+                    <span><strong>相关性：</strong>${article.relevance_score.toFixed(2)}</span>
+                    <span><strong>可靠性：</strong>${article.reliability_score.toFixed(2)}</span>
+                    ${article.keywords ? `<span><strong>关键词：</strong>${escapeHtml(article.keywords)}</span>` : ''}
+                </div>
+                ${article.content ? `
+                    <div class="article-content">
+                        ${escapeHtml(article.content.substring(0, 500))}${article.content.length > 500 ? '...' : ''}
+                    </div>
+                ` : ''}
+                ${article.ai_analysis ? `
+                    <div class="article-analysis">
+                        <strong>AI分析：</strong><br>
+                        ${escapeHtml(article.ai_analysis)}
+                    </div>
+                ` : ''}
+            `;
+            fragment.appendChild(div);
+        });
+        
+        container.appendChild(fragment);
+        index = endIndex;
+        
+        // 如果还有更多，使用requestAnimationFrame继续渲染
+        if (index < articles.length) {
+            requestAnimationFrame(renderNextBatch);
+        }
+    }
+    
+    // 开始渲染
+    renderNextBatch();
 }
 
 // 工作流程图相关函数
@@ -1047,7 +1201,7 @@ function setupAutoRefresh() {
     }
 }
 
-// 加载股票列表
+// 加载股票列表（优化：先显示列表，价格异步加载）
 async function loadStocks() {
     const stocksList = document.getElementById('stocks-list');
     stocksList.innerHTML = '<div class="loading">加载中</div>';
@@ -1072,31 +1226,122 @@ async function loadStocks() {
                 return;
             }
             
-            // 为每个股票获取最新价格
-            const stocksWithPrices = await Promise.all(
-                result.stocks.map(async (stock) => {
-                    try {
-                        const priceUrl = `${API_BASE}/stocks/${stock.symbol}/price${stock.stock_type ? `?type=${stock.stock_type}` : ''}`;
-                        const priceResponse = await fetch(priceUrl);
-                        // 确保响应是成功的（200状态码）
-                        if (!priceResponse.ok) {
-                            console.warn(`获取股票 ${stock.symbol} 价格失败: HTTP ${priceResponse.status}`);
-                            return { ...stock, current_price: null };
-                        }
-                        const priceResult = await priceResponse.json();
-                        return {
-                            ...stock,
-                            current_price: priceResult.success ? priceResult.price : null,
-                            price_error: priceResult.success ? null : (priceResult.error || '无法获取价格')
-                        };
-                    } catch (e) {
-                        console.error(`获取股票 ${stock.symbol} 价格出错:`, e);
-                        return { ...stock, current_price: null, price_error: '网络错误' };
-                    }
-                })
-            );
+            // 先渲染股票列表（不包含价格），立即显示
+            const stockTypesMap = {};
+            result.stocks.forEach(stock => {
+                stockTypesMap[stock.symbol] = stock.stock_type;
+            });
             
-            stocksList.innerHTML = stocksWithPrices.map(stock => `
+            stocksList.innerHTML = result.stocks.map(stock => `
+                <div class="stock-item" data-symbol="${escapeHtml(stock.symbol)}">
+                    <div class="stock-header">
+                        <div class="stock-symbol-info">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <span class="stock-symbol">${escapeHtml(stock.symbol)}</span>
+                                ${stock.stock_type ? `
+                                    <span class="stock-type-badge stock-type-${stock.stock_type}">
+                                        ${stock.stock_type === 'us_stock' ? '美股' : stock.stock_type === 'a_stock' ? 'A股' : '期货'}
+                                    </span>
+                                ` : ''}
+                                ${stock.market ? `<span style="font-size: 0.85em; color: #666;">${escapeHtml(stock.market)}</span>` : ''}
+                            </div>
+                            ${stock.company_name ? `<span class="stock-company">${escapeHtml(stock.company_name)}</span>` : ''}
+                        </div>
+                        <div class="stock-price-info" id="price-${escapeHtml(stock.symbol)}">
+                            <span class="stock-price" style="color: #999;">加载中...</span>
+                        </div>
+                    </div>
+                    <div class="stock-meta">
+                        ${stock.relevance ? `<span><strong>相关性：</strong>${escapeHtml(stock.relevance)}</span>` : ''}
+                        <span><strong>识别时间：</strong>${formatDate(stock.identified_at)}</span>
+                        <span><strong>状态：</strong>${stock.is_active ? '✅ 活跃' : '❌ 非活跃'}</span>
+                    </div>
+                    <div class="stock-actions">
+                        <button class="btn btn-small" onclick="showStockChart('${escapeHtml(stock.symbol)}')">查看走势</button>
+                        <button class="btn btn-small" onclick="updateStockPrice('${escapeHtml(stock.symbol)}')">更新价格</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            // 批量获取价格（异步加载）
+            loadStockPricesBatch(result.stocks.map(s => s.symbol), stockTypesMap);
+        } else {
+            throw new Error(result.error || '加载失败');
+        }
+    } catch (error) {
+        stocksList.innerHTML = `<div class="result-area error" style="display: block;">
+            <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
+        </div>`;
+    }
+}
+
+// 批量加载股票价格（优化性能）
+async function loadStockPricesBatch(symbols, stockTypesMap = {}) {
+    if (!symbols || symbols.length === 0) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/stocks/prices/batch`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                symbols: symbols,
+                stock_types: stockTypesMap,
+                force_refresh: false  // 优先使用缓存
+            }),
+        });
+        
+        const result = await response.json();
+        
+        if (result.success && result.results) {
+            // 更新每个股票的价格显示
+            Object.keys(result.results).forEach(symbol => {
+                const priceResult = result.results[symbol];
+                const priceElement = document.getElementById(`price-${symbol}`);
+                
+                if (priceElement) {
+                    if (priceResult.success && priceResult.price) {
+                        const price = priceResult.price;
+                        const stockItem = document.querySelector(`[data-symbol="${symbol}"]`);
+                        const stockTypeBadge = stockItem?.querySelector('.stock-type-badge');
+                        const isAStock = stockTypeBadge?.textContent.includes('A股');
+                        const isFutures = stockTypeBadge?.textContent.includes('期货');
+                        
+                        priceElement.innerHTML = `
+                            <span class="stock-price">
+                                ${isAStock || isFutures ? '' : '$'}${price.price?.toFixed(2) || 'N/A'}
+                                ${isAStock ? '元' : isFutures ? '元/手' : ''}
+                            </span>
+                            ${price.change !== null && price.change !== undefined ? `
+                                <span class="stock-change ${price.change >= 0 ? 'positive' : 'negative'}">
+                                    ${price.change >= 0 ? '+' : ''}${price.change?.toFixed(2) || '0.00'} 
+                                    (${price.change_percent >= 0 ? '+' : ''}${price.change_percent?.toFixed(2) || '0.00'}%)
+                                </span>
+                            ` : ''}
+                            ${price.source === 'database' || priceResult.cached ? '<span style="font-size: 0.8em; color: #666; margin-left: 5px;">(缓存)</span>' : ''}
+                        `;
+                    } else {
+                        priceElement.innerHTML = `<span class="stock-price" style="color: #999;">⚠️ ${escapeHtml(priceResult.error || '无法获取价格')}</span>`;
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('批量加载股票价格失败:', error);
+        // 如果批量加载失败，尝试单个加载（降级方案）
+        symbols.forEach(symbol => {
+            const priceElement = document.getElementById(`price-${symbol}`);
+            if (priceElement) {
+                priceElement.innerHTML = '<span class="stock-price" style="color: #999;">加载失败</span>';
+            }
+        });
+    }
+}
+
+// 保留旧的渲染函数用于兼容（已废弃，但保留以防需要）
+function renderStocksOld(stocksWithPrices) {
+    return stocksWithPrices.map(stock => `
                 <div class="stock-item">
                     <div class="stock-header">
                         <div class="stock-symbol-info">
@@ -1445,7 +1690,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!sortKey || sortKey === currentArticlesSort) return;
             currentArticlesSort = sortKey;
             sortButtons.forEach(btn => btn.classList.toggle('active', btn === button));
-            renderArticles(sortArticles(currentArticles, currentArticlesSort));
+            
+            // 使用新的分批渲染函数
+            const articlesList = document.getElementById('articles-list');
+            articlesList.innerHTML = ''; // 清空当前内容
+            const sortedArticles = sortArticles(currentArticles, currentArticlesSort);
+            renderArticlesBatch(sortedArticles, articlesList);
         });
     });
     
