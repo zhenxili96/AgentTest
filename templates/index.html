@@ -304,6 +304,22 @@
                     </label>
                 </div>
             </div>
+            <div class="card scheduler-card">
+                <div class="scheduler-header">
+                    <div>
+                        <h2>后台任务运行状态</h2>
+                        <p class="workflow-subtitle">识别正在执行与定时任务的状态</p>
+                    </div>
+                    <div class="scheduler-meta">
+                        <span class="scheduler-meta-label">最近更新：</span>
+                        <span class="scheduler-meta-value" id="scheduler-updated-at">-</span>
+                    </div>
+                </div>
+                <div id="scheduler-status-list" class="scheduler-status-list">
+                    <div class="loading">加载中...</div>
+                </div>
+                <p class="scheduler-footnote">状态由后台调度器提供，若服务未启动可能显示为未运行。</p>
+            </div>
         </div>
 
         <!-- 投资建议标签页 -->

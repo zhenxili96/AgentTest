@@ -38,6 +38,16 @@ def health():
     return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
 
 
+@app.route("/api/scheduler/status", methods=["GET"])
+def scheduler_status():
+    """获取后台调度任务状态"""
+    try:
+        status = scheduler.get_status()
+        return jsonify({"success": True, "scheduler": status})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/articles", methods=["GET"])
 def get_articles():
     """获取文章列表"""
