@@ -257,6 +257,117 @@ header h1 {
     color: #721c24;
 }
 
+.recommendation-result {
+    margin-top: 25px;
+    display: none;
+}
+
+.recommendation-result.loading {
+    display: block;
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.recommendation-result.success {
+    display: block;
+}
+
+.recommendation-result.error {
+    display: block;
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.recommendation-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    background: #f0f4ff;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.recommendation-summary h3 {
+    color: #667eea;
+    margin-bottom: 8px;
+}
+
+.recommendation-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.recommendation-card {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.06);
+}
+
+.recommendation-card h4 {
+    color: #667eea;
+    margin-bottom: 12px;
+}
+
+.recommendation-card ul {
+    padding-left: 18px;
+    color: #555;
+    line-height: 1.7;
+}
+
+.recommendation-meta {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: #666;
+    font-size: 0.9em;
+}
+
+.recommendation-note {
+    margin-top: 10px;
+    background: #fff3cd;
+    border-radius: 8px;
+    padding: 12px;
+    color: #856404;
+}
+
+.evidence-list {
+    list-style: none;
+    padding: 0;
+}
+
+.evidence-list li {
+    padding: 10px 0;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.evidence-list li:last-child {
+    border-bottom: none;
+}
+
+.evidence-list a {
+    color: #667eea;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.evidence-list span {
+    display: block;
+    color: #666;
+    font-size: 0.85em;
+    margin-top: 4px;
+}
+
 .keywords-list,
 .articles-list,
 .stocks-list {

@@ -47,6 +47,11 @@ class Config:
     SEARCH_INTERVAL_MINUTES: int = int(os.getenv("SEARCH_INTERVAL_MINUTES", "30"))
     MAX_ARTICLES_PER_SEARCH: int = int(os.getenv("MAX_ARTICLES_PER_SEARCH", "50"))
     MIN_CONFIDENCE_SCORE: float = float(os.getenv("MIN_CONFIDENCE_SCORE", "0.7"))
+
+    # 多Agent配置
+    AGENT_MAX_ARTICLES: int = int(os.getenv("AGENT_MAX_ARTICLES", "40"))
+    AGENT_MIN_SOURCES: int = int(os.getenv("AGENT_MIN_SOURCES", "4"))
+    AGENT_TOP_EVIDENCE_COUNT: int = int(os.getenv("AGENT_TOP_EVIDENCE_COUNT", "8"))
     
     # 搜索关键词（白银期货投资相关，包括上下游和关联因素）
     # 核心关键词：白银、银价、白银期货
