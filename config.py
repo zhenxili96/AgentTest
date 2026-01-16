@@ -52,6 +52,7 @@ class Config:
     AGENT_MAX_ARTICLES: int = int(os.getenv("AGENT_MAX_ARTICLES", "40"))
     AGENT_MIN_SOURCES: int = int(os.getenv("AGENT_MIN_SOURCES", "4"))
     AGENT_TOP_EVIDENCE_COUNT: int = int(os.getenv("AGENT_TOP_EVIDENCE_COUNT", "8"))
+    AGENT_MAX_STOCKS: int = int(os.getenv("AGENT_MAX_STOCKS", "8"))
     
     # 搜索关键词（白银期货投资相关，包括上下游和关联因素）
     # 核心关键词：白银、银价、白银期货
