@@ -315,6 +315,11 @@ function renderRecommendation(data) {
     const synthesis = data.synthesis || {};
     const recommendation = data.recommendation || {};
     const evidence = synthesis.evidence || [];
+    const signalProbs = recommendation.signal_probs || {};
+    const signalLabel = recommendation.signal || '观望';
+    const buyProb = formatProbability(signalProbs.buy);
+    const sellProb = formatProbability(signalProbs.sell);
+    const holdProb = formatProbability(signalProbs.hold);
 
     resultArea.className = 'recommendation-result success';
     resultArea.innerHTML = `
@@ -322,6 +327,15 @@ function renderRecommendation(data) {
             <div>
                 <h3>建议概览</h3>
                 <p>${escapeHtml(recommendation.outlook || '暂无结论')}</p>
+                <div class="signal-summary">
+                    <span class="signal-label">明确建议：</span>
+                    <span class="signal-value signal-${getSignalClass(signalLabel)}">${escapeHtml(signalLabel)}</span>
+                    <div class="signal-probabilities">
+                        <span>买入 ${buyProb}</span>
+                        <span>卖出 ${sellProb}</span>
+                        <span>观望 ${holdProb}</span>
+                    </div>
+                </div>
             </div>
             <div class="confidence-badge confidence-${getConfidenceClass(recommendation.confidence)}">
                 置信度 ${(recommendation.confidence || 0).toFixed(2)}
@@ -397,6 +411,19 @@ function getConfidenceClass(confidence) {
     if (confidence >= 0.75) return 'high';
     if (confidence >= 0.5) return 'medium';
     return 'low';
+}
+
+function getSignalClass(signal) {
+    if (signal === '买入') return 'buy';
+    if (signal === '卖出') return 'sell';
+    return 'hold';
+}
+
+function formatProbability(value) {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+        return '—';
+    }
+    return `${(value * 100).toFixed(0)}%`;
 }
 
 // 加载统计数据

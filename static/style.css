@@ -307,6 +307,50 @@ body {
     margin-bottom: 8px;
 }
 
+.signal-summary {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #444;
+    font-size: 0.95em;
+}
+
+.signal-label {
+    font-weight: 600;
+    margin-right: 6px;
+}
+
+.signal-value {
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+    display: inline-block;
+}
+
+.signal-value.signal-buy {
+    background: #e6f7ee;
+    color: #1a7f37;
+}
+
+.signal-value.signal-sell {
+    background: #fdecea;
+    color: #b42318;
+}
+
+.signal-value.signal-hold {
+    background: #fff7e6;
+    color: #b26a00;
+}
+
+.signal-probabilities {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    color: #666;
+    font-size: 0.9em;
+}
+
 .recommendation-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

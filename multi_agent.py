@@ -318,7 +318,8 @@ class MultiAgentOrchestrator:
         market_snapshot = self._render_market_snapshot(market_result.get("prices", []))
         prompt = (
             f"你是投资顾问，请基于以下信息为{context.theme}主题生成投资建议。"
-            "输出JSON，字段包含: outlook, actions(list), watchlist(list), risk_notes(list), confidence(0-1)。\n\n"
+            "输出JSON，字段包含: outlook, actions(list), watchlist(list), risk_notes(list), "
+            "confidence(0-1), signal(买入/卖出/观望), signal_probs({buy,sell,hold}概率且总和=1)。\n\n"
             f"风险偏好: {context.risk_profile}\n"
             f"投资周期: {context.horizon_days}天\n"
             f"验证评分: {verification_score}\n"
@@ -330,14 +331,21 @@ class MultiAgentOrchestrator:
 
         ai_payload = self._call_llm_json(prompt)
         if ai_payload:
+            normalized_signal, normalized_probs = self._normalize_signal_data(
+                ai_payload,
+                verification_score,
+            )
             ai_payload["source"] = "ai"
             ai_payload["confidence"] = ai_payload.get("confidence", verification_score)
+            ai_payload["signal"] = normalized_signal
+            ai_payload["signal_probs"] = normalized_probs
             return ai_payload
 
         outlook = "观望" if verification_score < 0.5 else "谨慎跟踪"
         if verification_score >= 0.75 and avg_confidence >= Config.MIN_CONFIDENCE_SCORE:
             outlook = "关注机会"
 
+        fallback_signal, fallback_probs = self._build_signal_probabilities(verification_score)
         return {
             "source": "fallback",
             "outlook": outlook,
@@ -352,6 +360,8 @@ class MultiAgentOrchestrator:
                 "注意已识别标的的流动性与相关性差异",
             ],
             "confidence": round(verification_score, 2),
+            "signal": fallback_signal,
+            "signal_probs": fallback_probs,
         }
 
     def _build_evidence(self, articles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -393,6 +403,100 @@ class MultiAgentOrchestrator:
             source = item.get("source", "")
             lines.append(f"- {symbol}: {price} ({change} / {change_percent}) 来源: {source}")
         return "\n".join(lines)
+
+    def _normalize_signal_data(
+        self,
+        payload: Dict[str, Any],
+        verification_score: float,
+    ) -> tuple[str, Dict[str, float]]:
+        signal = payload.get("signal")
+        if isinstance(signal, str):
+            normalized_signal = signal.strip().lower()
+            if normalized_signal in {"buy", "bullish", "买入"}:
+                signal = "买入"
+            elif normalized_signal in {"sell", "bearish", "卖出"}:
+                signal = "卖出"
+            elif normalized_signal in {"hold", "neutral", "观望"}:
+                signal = "观望"
+
+        probabilities = self._extract_signal_probs(payload)
+        if not probabilities:
+            signal, probabilities = self._build_signal_probabilities(verification_score)
+
+        normalized_probs = self._normalize_probabilities(probabilities)
+        if signal not in {"买入", "卖出", "观望"}:
+            signal = self._signal_from_probabilities(normalized_probs)
+        return signal, normalized_probs
+
+    def _extract_signal_probs(self, payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        candidates = [
+            payload.get("signal_probs"),
+            payload.get("signal_probabilities"),
+            payload.get("probabilities"),
+        ]
+        for candidate in candidates:
+            if isinstance(candidate, dict):
+                return candidate
+
+        explicit = {}
+        for key, normalized in {
+            "buy": ["buy", "buy_prob", "buy_probability", "prob_buy"],
+            "sell": ["sell", "sell_prob", "sell_probability", "prob_sell"],
+            "hold": ["hold", "hold_prob", "hold_probability", "prob_hold", "neutral"],
+        }.items():
+            for option in normalized:
+                value = payload.get(option)
+                if isinstance(value, (int, float)):
+                    explicit[key] = value
+                    break
+        return explicit or None
+
+    def _normalize_probabilities(self, probs: Dict[str, Any]) -> Dict[str, float]:
+        buy = self._coerce_probability(probs.get("buy"))
+        sell = self._coerce_probability(probs.get("sell"))
+        hold = self._coerce_probability(probs.get("hold"))
+
+        total = sum(value for value in [buy, sell, hold] if value is not None)
+        if total <= 0:
+            return {"buy": 0.33, "sell": 0.33, "hold": 0.34}
+
+        if buy is None:
+            buy = 0.0
+        if sell is None:
+            sell = 0.0
+        if hold is None:
+            hold = 0.0
+
+        normalized = {
+            "buy": buy / total,
+            "sell": sell / total,
+            "hold": hold / total,
+        }
+        return normalized
+
+    def _signal_from_probabilities(self, probs: Dict[str, float]) -> str:
+        if probs["buy"] >= probs["sell"] and probs["buy"] >= probs["hold"]:
+            return "买入"
+        if probs["sell"] >= probs["buy"] and probs["sell"] >= probs["hold"]:
+            return "卖出"
+        return "观望"
+
+    def _build_signal_probabilities(
+        self,
+        verification_score: float,
+    ) -> tuple[str, Dict[str, float]]:
+        base = min(max(verification_score, 0.0), 1.0)
+        buy = 0.2 + 0.6 * base
+        sell = 0.1 + 0.5 * (1 - base)
+        hold = max(0.0, 1 - buy - sell)
+        probs = self._normalize_probabilities({"buy": buy, "sell": sell, "hold": hold})
+        return self._signal_from_probabilities(probs), probs
+
+    @staticmethod
+    def _coerce_probability(value: Any) -> Optional[float]:
+        if isinstance(value, (int, float)):
+            return min(max(float(value), 0.0), 1.0)
+        return None
 
     @staticmethod
     def _normalize_title(title: str) -> str:
