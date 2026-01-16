@@ -206,11 +206,24 @@ class StockFetcher:
                     print(f"⚠️ 无法获取期货列表")
                     return None
                 
+                # 检查DataFrame的实际列名（akshare可能返回不同的列名）
+                # 可能的列名：symbol, 代码, 合约代码, name, 名称等
+                symbol_column = None
+                possible_symbol_columns = ["symbol", "代码", "合约代码", "name", "名称", "symbol_name"]
+                for col in possible_symbol_columns:
+                    if col in futures_list.columns:
+                        symbol_column = col
+                        break
+                
+                if symbol_column is None:
+                    print(f"⚠️ 无法识别期货列表的代码列，可用列: {list(futures_list.columns)}")
+                    return None
+                
                 # 查找匹配的期货（通过代码前缀匹配）
                 symbol_lower = symbol.lower()
                 futures_data = futures_list[
-                    futures_list["symbol"].str.startswith(symbol_lower, na=False) |
-                    futures_list["symbol"].str.startswith(symbol_upper, na=False)
+                    futures_list[symbol_column].str.startswith(symbol_lower, na=False) |
+                    futures_list[symbol_column].str.startswith(symbol_upper, na=False)
                 ]
                 
                 if futures_data.empty:
@@ -219,7 +232,7 @@ class StockFetcher:
                 
                 # 取第一个匹配的（通常是主力合约）
                 row = futures_data.iloc[0]
-                futures_symbol = row["symbol"]
+                futures_symbol = row[symbol_column]
                 
                 # 获取实时行情
                 quote = ak.futures_zh_realtime_sina(symbol=futures_symbol)

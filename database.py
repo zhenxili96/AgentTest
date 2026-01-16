@@ -116,27 +116,95 @@ class Database:
                 conn = sqlite3.connect(db_path)
                 cursor = conn.cursor()
                 
-                # 检查 identified_stocks 表的 stock_type 列
-                cursor.execute("PRAGMA table_info(identified_stocks)")
-                columns = [row[1] for row in cursor.fetchall()]
+                # 迁移 identified_stocks 表
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='identified_stocks'
+                """)
+                if cursor.fetchone():
+                    # 获取现有列
+                    cursor.execute("PRAGMA table_info(identified_stocks)")
+                    existing_columns = {row[1] for row in cursor.fetchall()}
+                    
+                    # 需要添加的列及其定义
+                    required_columns = {
+                        "stock_type": ("VARCHAR(20)", "'us_stock'"),
+                        "market": ("VARCHAR(50)", "NULL"),
+                        "relevance": ("TEXT", "NULL"),
+                        "theme": ("VARCHAR(100)", "NULL"),
+                        "source": ("VARCHAR(100)", "NULL"),
+                        "is_active": ("BOOLEAN", "1"),
+                        "identified_at": ("DATETIME", "NULL"),
+                        "last_updated_at": ("DATETIME", "NULL"),
+                    }
+                    
+                    # 添加缺失的列
+                    for column_name, (column_type, default_value) in required_columns.items():
+                        if column_name not in existing_columns:
+                            try:
+                                if default_value == "NULL":
+                                    sql = f"ALTER TABLE identified_stocks ADD COLUMN {column_name} {column_type}"
+                                else:
+                                    sql = f"ALTER TABLE identified_stocks ADD COLUMN {column_name} {column_type} DEFAULT {default_value}"
+                                cursor.execute(sql)
+                            except sqlite3.OperationalError:
+                                pass  # 列可能已存在
+                    
+                    # 创建索引
+                    index_columns = ["stock_type", "is_active", "identified_at"]
+                    for column_name in index_columns:
+                        if column_name in existing_columns or column_name in required_columns:
+                            try:
+                                index_name = f"ix_identified_stocks_{column_name}"
+                                cursor.execute(f"""
+                                    CREATE INDEX IF NOT EXISTS {index_name} 
+                                    ON identified_stocks({column_name})
+                                """)
+                            except sqlite3.OperationalError:
+                                pass
                 
-                if "stock_type" not in columns:
-                    try:
-                        cursor.execute("""
-                            ALTER TABLE identified_stocks 
-                            ADD COLUMN stock_type VARCHAR(20) DEFAULT 'us_stock'
-                        """)
-                        cursor.execute("""
-                            CREATE INDEX IF NOT EXISTS ix_identified_stocks_stock_type 
-                            ON identified_stocks(stock_type)
-                        """)
-                        conn.commit()
-                        print("[数据库迁移] 已添加 stock_type 列到 identified_stocks 表")
-                    except sqlite3.OperationalError:
-                        pass  # 列可能已存在
+                # 迁移 stock_prices 表
+                cursor.execute("""
+                    SELECT name FROM sqlite_master 
+                    WHERE type='table' AND name='stock_prices'
+                """)
+                if cursor.fetchone():
+                    # 获取现有列
+                    cursor.execute("PRAGMA table_info(stock_prices)")
+                    existing_columns = {row[1] for row in cursor.fetchall()}
+                    
+                    # 需要添加的列及其定义
+                    required_columns = {
+                        "stock_type": ("VARCHAR(20)", "'us_stock'"),
+                    }
+                    
+                    # 添加缺失的列
+                    for column_name, (column_type, default_value) in required_columns.items():
+                        if column_name not in existing_columns:
+                            try:
+                                if default_value == "NULL":
+                                    sql = f"ALTER TABLE stock_prices ADD COLUMN {column_name} {column_type}"
+                                else:
+                                    sql = f"ALTER TABLE stock_prices ADD COLUMN {column_name} {column_type} DEFAULT {default_value}"
+                                cursor.execute(sql)
+                                print(f"✅ 已为 stock_prices 表添加 {column_name} 列")
+                            except sqlite3.OperationalError as e:
+                                print(f"⚠️ 添加 stock_prices.{column_name} 列时出错: {e}")
+                    
+                    # 创建索引
+                    if "stock_type" in existing_columns or "stock_type" in required_columns:
+                        try:
+                            cursor.execute("""
+                                CREATE INDEX IF NOT EXISTS ix_stock_prices_stock_type 
+                                ON stock_prices(stock_type)
+                            """)
+                        except sqlite3.OperationalError:
+                            pass
                 
+                conn.commit()
                 conn.close()
-            except Exception:
+            except Exception as e:
+                print(f"⚠️ 数据库迁移时出错: {e}")
                 pass  # 迁移失败不影响主功能
     
     def get_session(self) -> Session:
