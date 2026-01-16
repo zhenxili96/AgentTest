@@ -1,4 +1,5 @@
 """数据库模型和操作"""
+import os
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, Boolean, func, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
@@ -99,7 +100,44 @@ class Database:
     def __init__(self):
         self.engine = create_engine(Config.DATABASE_URL, echo=False)
         Base.metadata.create_all(self.engine)
+        self._migrate_if_needed()
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+    
+    def _migrate_if_needed(self):
+        """检查并执行必要的数据库迁移"""
+        # 对于 SQLite，检查并添加缺失的列
+        if "sqlite" in Config.DATABASE_URL.lower():
+            try:
+                import sqlite3
+                db_path = Config.DATABASE_URL.replace("sqlite:///", "")
+                if not os.path.exists(db_path):
+                    return
+                
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                
+                # 检查 identified_stocks 表的 stock_type 列
+                cursor.execute("PRAGMA table_info(identified_stocks)")
+                columns = [row[1] for row in cursor.fetchall()]
+                
+                if "stock_type" not in columns:
+                    try:
+                        cursor.execute("""
+                            ALTER TABLE identified_stocks 
+                            ADD COLUMN stock_type VARCHAR(20) DEFAULT 'us_stock'
+                        """)
+                        cursor.execute("""
+                            CREATE INDEX IF NOT EXISTS ix_identified_stocks_stock_type 
+                            ON identified_stocks(stock_type)
+                        """)
+                        conn.commit()
+                        print("[数据库迁移] 已添加 stock_type 列到 identified_stocks 表")
+                    except sqlite3.OperationalError:
+                        pass  # 列可能已存在
+                
+                conn.close()
+            except Exception:
+                pass  # 迁移失败不影响主功能
     
     def get_session(self) -> Session:
         """获取数据库会话"""
