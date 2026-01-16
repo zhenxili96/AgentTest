@@ -685,6 +685,118 @@ body {
     margin: 0 auto;
 }
 
+.scheduler-card {
+    margin-top: 24px;
+}
+
+.scheduler-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.scheduler-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f8fafc;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+    font-size: 0.9em;
+    color: #475569;
+}
+
+.scheduler-meta-value {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.scheduler-status-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 18px;
+}
+
+.scheduler-status-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+}
+
+.scheduler-task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.scheduler-task-header h3 {
+    font-size: 1.1em;
+    color: #0f172a;
+    margin-bottom: 4px;
+}
+
+.scheduler-interval {
+    color: #64748b;
+    font-size: 0.9em;
+}
+
+.scheduler-status-badge {
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 0.85em;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.scheduler-status-running {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+.scheduler-status-idle {
+    background: #e2e8f0;
+    color: #475569;
+}
+
+.scheduler-status-error {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.scheduler-status-offline {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.scheduler-task-meta {
+    display: grid;
+    gap: 6px;
+    color: #475569;
+    font-size: 0.92em;
+}
+
+.scheduler-task-error {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fff1f2;
+    color: #be123c;
+    font-size: 0.9em;
+}
+
+.scheduler-footnote {
+    margin-top: 16px;
+    color: #94a3b8;
+    font-size: 0.85em;
+}
+
 .workflow-step {
     display: flex;
     align-items: flex-start;

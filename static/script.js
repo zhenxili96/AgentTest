@@ -559,15 +559,17 @@ let workflowRefreshInterval = null;
 async function refreshWorkflow() {
     try {
         // 并行获取统计数据、关键词数据、配置信息
-        const [statsResponse, keywordsResponse, configResponse] = await Promise.all([
+        const [statsResponse, keywordsResponse, configResponse, schedulerResponse] = await Promise.all([
             fetch(`${API_BASE}/stats`),
             fetch(`${API_BASE}/keywords?limit=1000`),
-            fetch(`${API_BASE}/config`)
+            fetch(`${API_BASE}/config`),
+            fetch(`${API_BASE}/scheduler/status`)
         ]);
         
         const statsResult = await statsResponse.json();
         const keywordsResult = await keywordsResponse.json();
         const configResult = await configResponse.json();
+        const schedulerResult = await schedulerResponse.json();
         
         if (statsResult.success) {
             const stats = statsResult.stats;
@@ -609,6 +611,12 @@ async function refreshWorkflow() {
             if (searchInterval) searchInterval.textContent = `${config.search_interval_minutes}分钟`;
             if (searchCount) searchCount.textContent = config.max_articles_per_search;
         }
+
+        if (schedulerResult.success && schedulerResult.scheduler) {
+            renderSchedulerStatus(schedulerResult.scheduler);
+        } else {
+            renderSchedulerStatusError(schedulerResult.error || '无法获取调度器状态');
+        }
         
         // 步骤1（主题设定）始终是完成的
         updateStepStatus(1, 'completed');
@@ -642,6 +650,76 @@ async function refreshWorkflow() {
     } catch (error) {
         console.error('刷新工作流程状态失败:', error);
     }
+}
+
+function renderSchedulerStatusError(message) {
+    const list = document.getElementById('scheduler-status-list');
+    const updatedAt = document.getElementById('scheduler-updated-at');
+    if (updatedAt) {
+        updatedAt.textContent = formatDate(new Date().toISOString());
+    }
+    if (list) {
+        list.innerHTML = `<div class="result-area error" style="display: block;">
+            <h3>❌ 状态加载失败</h3><p>${escapeHtml(message)}</p>
+        </div>`;
+    }
+}
+
+function renderSchedulerStatus(scheduler) {
+    const list = document.getElementById('scheduler-status-list');
+    const updatedAt = document.getElementById('scheduler-updated-at');
+    if (!list) return;
+
+    if (updatedAt) {
+        updatedAt.textContent = scheduler.server_time ? formatDate(scheduler.server_time) : '未知';
+    }
+
+    const tasks = scheduler.tasks || [];
+    if (!tasks.length) {
+        list.innerHTML = '<div class="result-area" style="display: block; background: #fff3cd; border: 1px solid #ffeaa7; color: #856404;">暂无任务状态</div>';
+        return;
+    }
+
+    list.innerHTML = tasks.map(task => {
+        const statusLabel = task.is_running ? '运行中' : task.last_status === 'error' ? '异常' : scheduler.running ? '待机中' : '未运行';
+        const statusClass = task.is_running ? 'running' : task.last_status === 'error' ? 'error' : scheduler.running ? 'idle' : 'offline';
+        const duration = formatDuration(task.last_duration_seconds);
+        const lastRun = task.last_run ? formatDate(task.last_run) : '尚未执行';
+        const nextRun = task.next_run ? formatDate(task.next_run) : '未安排';
+
+        return `
+            <div class="scheduler-status-item">
+                <div class="scheduler-task-header">
+                    <div>
+                        <h3>${escapeHtml(task.label)}</h3>
+                        <p class="scheduler-interval">${escapeHtml(task.interval)}</p>
+                    </div>
+                    <span class="scheduler-status-badge scheduler-status-${statusClass}">${statusLabel}</span>
+                </div>
+                <div class="scheduler-task-meta">
+                    <div><strong>上次执行：</strong>${lastRun}</div>
+                    <div><strong>耗时：</strong>${duration}</div>
+                    <div><strong>下次执行：</strong>${nextRun}</div>
+                </div>
+                ${task.last_error ? `<div class="scheduler-task-error">⚠️ ${escapeHtml(task.last_error)}</div>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function formatDuration(seconds) {
+    if (typeof seconds !== 'number' || Number.isNaN(seconds)) {
+        return '—';
+    }
+    if (seconds < 1) {
+        return `${(seconds * 1000).toFixed(0)} ms`;
+    }
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)} 秒`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remaining = Math.round(seconds % 60);
+    return `${minutes} 分 ${remaining} 秒`;
 }
 
 function updateStepStatus(stepNumber, status) {
