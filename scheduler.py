@@ -33,11 +33,23 @@ class Scheduler:
             articles = self.search_engine.search_all(Config.MAX_ARTICLES_PER_SEARCH)
             print(f"找到 {len(articles)} 篇文章")
             
+            # 过滤已存在的文章，避免重复评估
+            urls = [article.get("url") for article in articles if article.get("url")]
+            existing_urls = db.get_existing_article_urls(urls)
+            new_articles = [
+                article for article in articles
+                if article.get("url") not in existing_urls
+            ]
+
+            if not new_articles:
+                print("没有新的文章需要评估")
+                return
+
             # 评估并保存
             saved_count = 0
             high_confidence_count = 0
             
-            for article in articles:
+            for article in new_articles:
                 # 评估置信度
                 evaluation = self.evaluator.evaluate(article)
                 
@@ -55,7 +67,10 @@ class Scheduler:
                         high_confidence_count += 1
                         print(f"✓ 高置信度文章: {saved_article.title[:60]}... (置信度: {saved_article.confidence_score:.2f})")
             
+            skipped_count = len(articles) - len(new_articles)
             print(f"完成！保存了 {saved_count} 篇文章，其中 {high_confidence_count} 篇为高置信度")
+            if skipped_count > 0:
+                print(f"已跳过 {skipped_count} 篇已存在文章，避免重复评估")
         except Exception as e:
             print(f"搜索和评估过程中出错: {e}")
     

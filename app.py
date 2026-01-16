@@ -151,9 +151,17 @@ def manual_search():
             keywords=keywords
         )
         
+        # 过滤已存在的文章，避免重复评估
+        urls = [article.get("url") for article in articles if article.get("url")]
+        existing_urls = db.get_existing_article_urls(urls)
+        new_articles = [
+            article for article in articles
+            if article.get("url") not in existing_urls
+        ]
+
         # 评估并保存
         saved_count = 0
-        for article in articles:
+        for article in new_articles:
             evaluation = evaluator.evaluate(article, theme=theme)
             article_data = {**article, **evaluation}
             if db.add_article(article_data):
@@ -162,6 +170,8 @@ def manual_search():
         return jsonify({
             "success": True,
             "found": len(articles),
+            "new": len(new_articles),
+            "skipped": len(articles) - len(new_articles),
             "saved": saved_count,
         })
     except Exception as e:
