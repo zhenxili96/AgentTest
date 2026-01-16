@@ -10,6 +10,7 @@
 - 💾 **数据存储**：持久化存储搜索结果和分析
 - 📊 **数据可视化**：提供API接口查看和分析数据
 - 📈 **股市行情辅助**：获取股市行情快照，用于辅助分析
+- 🧠 **多Agent协作**：多环节检索、验证与建议生成
 
 ## 安装
 
@@ -92,6 +93,21 @@ POST /api/search
 #### 5. 获取股市行情
 ```
 GET /api/market/stock?symbols=SPY,QQQ,DIA
+```
+
+#### 6. 生成投资建议
+```
+POST /api/analysis/recommendation
+```
+请求示例：
+```json
+{
+  "theme": "白银",
+  "keywords": ["白银", "贵金属"],
+  "risk_profile": "balanced",
+  "horizon_days": 30,
+  "max_articles": 40
+}
 ```
 
 ### 方式3：使用示例脚本

@@ -9,6 +9,7 @@ from keyword_miner import KeywordMiner
 from stock_identifier import StockIdentifier
 from stock_fetcher import StockFetcher
 from scheduler import Scheduler
+from multi_agent import MultiAgentOrchestrator
 from config import Config
 
 app = Flask(__name__, template_folder='templates', static_folder='static')
@@ -19,6 +20,7 @@ evaluator = ConfidenceEvaluator()
 keyword_miner = KeywordMiner()
 stock_identifier = StockIdentifier()
 stock_fetcher = StockFetcher()
+multi_agent = MultiAgentOrchestrator()
 
 # 初始化调度器（用于后台持续获取信息）
 scheduler = Scheduler()
@@ -162,6 +164,30 @@ def manual_search():
             "found": len(articles),
             "saved": saved_count,
         })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analysis/recommendation", methods=["POST"])
+def generate_recommendation():
+    """多Agent投资建议"""
+    try:
+        data = request.get_json() or {}
+        theme = data.get("theme") or Config.DEFAULT_THEME
+        keywords = data.get("keywords")
+        risk_profile = data.get("risk_profile", "balanced")
+        horizon_days = data.get("horizon_days", 30)
+        max_articles = data.get("max_articles")
+
+        result = multi_agent.run(
+            theme=theme,
+            keywords=keywords,
+            risk_profile=risk_profile,
+            horizon_days=horizon_days,
+            max_articles=max_articles,
+        )
+
+        return jsonify({"success": True, "data": result})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

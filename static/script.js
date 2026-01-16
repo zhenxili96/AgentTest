@@ -245,6 +245,160 @@ async function analyzeKeyword() {
     }
 }
 
+// 生成投资建议
+async function generateRecommendation() {
+    const resultArea = document.getElementById('recommendation-result');
+    const btn = document.getElementById('recommend-submit');
+
+    const theme = document.getElementById('recommend-theme').value.trim();
+    const keywordsRaw = document.getElementById('recommend-keywords').value.trim();
+    const riskProfile = document.getElementById('recommend-risk').value;
+    const horizonDays = parseInt(document.getElementById('recommend-horizon').value, 10);
+    const maxArticles = parseInt(document.getElementById('recommend-max-articles').value, 10);
+
+    if (!theme) {
+        resultArea.className = 'recommendation-result error';
+        resultArea.innerHTML = '<h3>❌ 请填写主题</h3>';
+        return;
+    }
+
+    const payload = {
+        theme,
+        risk_profile: riskProfile,
+        horizon_days: Number.isNaN(horizonDays) ? 30 : horizonDays,
+        max_articles: Number.isNaN(maxArticles) ? 40 : maxArticles,
+    };
+
+    if (keywordsRaw) {
+        payload.keywords = keywordsRaw.split(',').map(k => k.trim()).filter(Boolean);
+    }
+
+    btn.disabled = true;
+    btn.textContent = '生成中...';
+    resultArea.className = 'recommendation-result loading';
+    resultArea.innerHTML = '<div class="loading">正在生成投资建议</div>';
+
+    try {
+        const response = await fetch(`${API_BASE}/analysis/recommendation`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || '生成失败');
+        }
+
+        renderRecommendation(result.data);
+    } catch (error) {
+        resultArea.className = 'recommendation-result error';
+        resultArea.innerHTML = `<h3>❌ 生成失败</h3><p>${escapeHtml(error.message)}</p>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '生成建议';
+    }
+}
+
+function renderRecommendation(data) {
+    const resultArea = document.getElementById('recommendation-result');
+    if (!data) {
+        resultArea.className = 'recommendation-result error';
+        resultArea.innerHTML = '<h3>❌ 未返回有效数据</h3>';
+        return;
+    }
+
+    const verification = data.verification || {};
+    const synthesis = data.synthesis || {};
+    const recommendation = data.recommendation || {};
+    const evidence = synthesis.evidence || [];
+
+    resultArea.className = 'recommendation-result success';
+    resultArea.innerHTML = `
+        <div class="recommendation-summary">
+            <div>
+                <h3>建议概览</h3>
+                <p>${escapeHtml(recommendation.outlook || '暂无结论')}</p>
+            </div>
+            <div class="confidence-badge confidence-${getConfidenceClass(recommendation.confidence)}">
+                置信度 ${(recommendation.confidence || 0).toFixed(2)}
+            </div>
+        </div>
+
+        <div class="recommendation-grid">
+            <div class="recommendation-card">
+                <h4>验证摘要</h4>
+                <p>${escapeHtml(verification.summary || '暂无')}</p>
+                <div class="recommendation-meta">
+                    <span>来源覆盖：${verification.source_diversity || 0}</span>
+                    <span>近48小时占比：${((verification.recent_ratio || 0) * 100).toFixed(0)}%</span>
+                    <span>平均置信度：${(verification.avg_confidence || 0).toFixed(2)}</span>
+                </div>
+            </div>
+            <div class="recommendation-card">
+                <h4>核心驱动因素</h4>
+                <ul>
+                    ${(synthesis.drivers || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>暂无</li>'}
+                </ul>
+            </div>
+            <div class="recommendation-card">
+                <h4>风险提示</h4>
+                <ul>
+                    ${(synthesis.risks || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>暂无</li>'}
+                </ul>
+            </div>
+            <div class="recommendation-card">
+                <h4>潜在催化剂</h4>
+                <ul>
+                    ${(synthesis.catalysts || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>暂无</li>'}
+                </ul>
+            </div>
+        </div>
+
+        <div class="recommendation-card">
+            <h4>可执行建议</h4>
+            <ul>
+                ${(recommendation.actions || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>暂无</li>'}
+            </ul>
+            <div class="recommendation-note">
+                ${(recommendation.risk_notes || []).map(item => `<p>⚠️ ${escapeHtml(item)}</p>`).join('') || '<p>暂无风险提示</p>'}
+            </div>
+        </div>
+
+        <div class="recommendation-card">
+            <h4>关注清单</h4>
+            <ul>
+                ${(recommendation.watchlist || []).map(item => `<li>${escapeHtml(item)}</li>`).join('') || '<li>暂无</li>'}
+            </ul>
+        </div>
+
+        <div class="recommendation-card">
+            <h4>关键证据</h4>
+            ${evidence.length ? `
+                <ul class="evidence-list">
+                    ${evidence.map(item => `
+                        <li>
+                            <a href="${escapeHtml(item.url || '#')}" target="_blank" rel="noopener noreferrer">
+                                ${escapeHtml(item.title || '未知标题')}
+                            </a>
+                            <span>${escapeHtml(item.source || '未知')} · ${formatDate(item.published_at)}</span>
+                        </li>
+                    `).join('')}
+                </ul>
+            ` : '<p>暂无证据</p>'}
+        </div>
+    `;
+}
+
+function getConfidenceClass(confidence) {
+    if (confidence >= 0.75) return 'high';
+    if (confidence >= 0.5) return 'medium';
+    return 'low';
+}
+
 // 加载统计数据
 async function loadStats() {
     const statsContent = document.getElementById('stats-content');
