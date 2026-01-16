@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import json
+import re
 from typing import Any, Dict, List, Optional
 
 from config import Config
@@ -54,12 +55,14 @@ class MultiAgentOrchestrator:
         research_result = self._research_agent(context)
         verification_result = self._verification_agent(context, research_result)
         keyword_result = self._keyword_agent(context, research_result)
+        market_result = self._market_agent(context, research_result, keyword_result)
         synthesis_result = self._synthesis_agent(context, research_result, verification_result)
         recommendation_result = self._recommendation_agent(
             context,
             research_result,
             verification_result,
             keyword_result,
+            market_result,
             synthesis_result,
         )
 
@@ -74,6 +77,7 @@ class MultiAgentOrchestrator:
             "research": research_result,
             "verification": verification_result,
             "keywords": keyword_result,
+            "market": market_result,
             "synthesis": synthesis_result,
             "recommendation": recommendation_result,
             "generated_at": datetime.utcnow().isoformat(),
@@ -123,6 +127,7 @@ class MultiAgentOrchestrator:
                 "source_diversity": 0,
                 "recent_ratio": 0.0,
                 "avg_confidence": 0.0,
+                "duplicate_ratio": 0.0,
                 "summary": "未获取到可验证的文章",
             }
 
@@ -131,24 +136,31 @@ class MultiAgentOrchestrator:
 
         cutoff = datetime.utcnow() - timedelta(hours=48)
         recent_count = 0
+        normalized_titles = []
         for article in articles:
-            published_at = article.get("published_at")
+            published_at = self._normalize_published_at(article.get("published_at"))
             if isinstance(published_at, datetime) and published_at >= cutoff:
                 recent_count += 1
+            title = article.get("title") or ""
+            normalized_titles.append(self._normalize_title(title))
 
         recent_ratio = recent_count / max(len(articles), 1)
         avg_confidence = sum(
             article.get("confidence_score", 0) for article in articles
         ) / max(len(articles), 1)
+        unique_titles = len(set(normalized_titles)) if normalized_titles else 0
+        duplicate_ratio = (len(normalized_titles) - unique_titles) / max(len(normalized_titles), 1)
 
         source_score = min(1.0, source_diversity / max(Config.AGENT_MIN_SOURCES, 1))
         verification_score = (
-            0.4 * avg_confidence + 0.3 * source_score + 0.3 * recent_ratio
+            0.4 * avg_confidence + 0.3 * source_score + 0.2 * recent_ratio + 0.1 * (1 - duplicate_ratio)
         )
+        verification_score = min(max(verification_score, 0.0), 1.0)
 
         summary = (
             f"来源覆盖 {source_diversity} 个媒体，平均置信度 {avg_confidence:.2f}，"
-            f"近48小时文章占比 {recent_ratio:.0%}。"
+            f"近48小时文章占比 {recent_ratio:.0%}，"
+            f"标题重复占比 {duplicate_ratio:.0%}。"
         )
 
         return {
@@ -156,6 +168,7 @@ class MultiAgentOrchestrator:
             "source_diversity": source_diversity,
             "recent_ratio": round(recent_ratio, 3),
             "avg_confidence": round(avg_confidence, 3),
+            "duplicate_ratio": round(duplicate_ratio, 3),
             "summary": summary,
         }
 
@@ -191,6 +204,60 @@ class MultiAgentOrchestrator:
                 {"keyword": keyword, "relevance_score": 0.5}
                 for keyword in sorted(set(fallback_keywords))
             ],
+        }
+
+    def _market_agent(
+        self,
+        context: AgentContext,
+        research_result: Dict[str, Any],
+        keyword_result: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """市场Agent：识别相关标的并拉取行情快照"""
+        if not self.stock_identifier.client:
+            return {
+                "source": "unavailable",
+                "symbols": [],
+                "prices": [],
+                "summary": "未配置AI API，无法识别相关标的",
+            }
+
+        keyword_list = [
+            item.get("keyword")
+            for item in keyword_result.get("keywords", [])
+            if isinstance(item, dict) and item.get("keyword")
+        ]
+        stocks_from_keywords = self.stock_identifier.identify_stocks_from_keywords(
+            keyword_list,
+            theme=context.theme,
+        )
+        stocks_from_articles = self.stock_identifier.identify_stocks_from_articles(
+            research_result.get("articles", []),
+            theme=context.theme,
+            limit=20,
+        )
+
+        combined_stocks = self._dedupe_stocks(stocks_from_keywords + stocks_from_articles)
+        limited_stocks = combined_stocks[: Config.AGENT_MAX_STOCKS]
+
+        prices = []
+        for stock in limited_stocks:
+            price_data = self.stock_fetcher.fetch_realtime_price(
+                stock.get("symbol"),
+                stock_type=stock.get("stock_type"),
+            )
+            if price_data:
+                prices.append(price_data)
+
+        summary = (
+            f"识别 {len(combined_stocks)} 个相关标的，"
+            f"已获取 {len(prices)} 条行情快照。"
+        )
+
+        return {
+            "source": "ai",
+            "symbols": combined_stocks,
+            "prices": prices,
+            "summary": summary,
         }
 
     def _synthesis_agent(
@@ -239,6 +306,7 @@ class MultiAgentOrchestrator:
         research_result: Dict[str, Any],
         verification_result: Dict[str, Any],
         keyword_result: Dict[str, Any],
+        market_result: Dict[str, Any],
         synthesis_result: Dict[str, Any],
     ) -> Dict[str, Any]:
         """建议Agent：输出投资建议与可执行清单"""
@@ -246,6 +314,8 @@ class MultiAgentOrchestrator:
         avg_confidence = verification_result.get("avg_confidence", 0)
         verification_score = verification_result.get("verification_score", 0)
 
+        market_summary = market_result.get("summary", "")
+        market_snapshot = self._render_market_snapshot(market_result.get("prices", []))
         prompt = (
             f"你是投资顾问，请基于以下信息为{context.theme}主题生成投资建议。"
             "输出JSON，字段包含: outlook, actions(list), watchlist(list), risk_notes(list), confidence(0-1)。\n\n"
@@ -253,6 +323,8 @@ class MultiAgentOrchestrator:
             f"投资周期: {context.horizon_days}天\n"
             f"验证评分: {verification_score}\n"
             f"摘要: {synthesis_result.get('summary')}\n\n"
+            f"市场摘要: {market_summary}\n"
+            f"行情快照:\n{market_snapshot}\n\n"
             f"证据：\n{self._render_evidence_text(evidence)}"
         )
 
@@ -277,6 +349,7 @@ class MultiAgentOrchestrator:
             "risk_notes": [
                 "信息来源集中度较高时需谨慎",
                 "关注宏观利率与美元走势变化",
+                "注意已识别标的的流动性与相关性差异",
             ],
             "confidence": round(verification_score, 2),
         }
@@ -306,6 +379,56 @@ class MultiAgentOrchestrator:
                 f"- {item.get('title')} ({item.get('source')}) {item.get('published_at')}, 置信度 {item.get('confidence_score')}"
             )
         return "\n".join(lines)
+
+    def _render_market_snapshot(self, prices: List[Dict[str, Any]]) -> str:
+        if not prices:
+            return "暂无行情快照。"
+
+        lines = []
+        for item in prices:
+            symbol = item.get("symbol", "")
+            price = item.get("price", "N/A")
+            change = item.get("change", "N/A")
+            change_percent = item.get("change_percent", "")
+            source = item.get("source", "")
+            lines.append(f"- {symbol}: {price} ({change} / {change_percent}) 来源: {source}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _normalize_title(title: str) -> str:
+        normalized = re.sub(r"\s+", " ", title.strip().lower())
+        normalized = re.sub(r"[^\w\u4e00-\u9fff]+", "", normalized)
+        return normalized
+
+    def _normalize_published_at(self, published_at: Any) -> Optional[datetime]:
+        if isinstance(published_at, datetime):
+            return published_at
+        if isinstance(published_at, str):
+            try:
+                return datetime.fromisoformat(published_at.replace("Z", "+00:00"))
+            except ValueError:
+                pass
+            try:
+                return datetime.strptime(published_at, "%Y-%m-%dT%H:%M:%S%z")
+            except ValueError:
+                return None
+        return None
+
+    @staticmethod
+    def _dedupe_stocks(stocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped = []
+        seen = set()
+        for stock in stocks:
+            symbol = stock.get("symbol")
+            stock_type = stock.get("stock_type")
+            if not symbol:
+                continue
+            key = (symbol, stock_type)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(stock)
+        return deduped
 
     def _call_llm_json(self, prompt: str) -> Optional[Dict[str, Any]]:
         """调用AI并尝试解析JSON"""
