@@ -1360,14 +1360,6 @@ function renderStocksOld(stocksWithPrices) {
                     </div>
                 </div>
             `).join('');
-        } else {
-            throw new Error(result.error || '加载失败');
-        }
-    } catch (error) {
-        stocksList.innerHTML = `<div class="result-area error" style="display: block;">
-            <h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>
-        </div>`;
-    }
 }
 
 // 识别股票
