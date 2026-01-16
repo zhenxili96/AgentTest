@@ -1026,7 +1026,8 @@ async function loadStocks() {
     
     const active = document.getElementById('stocks-active').value;
     const limit = parseInt(document.getElementById('stocks-limit').value) || 50;
-    const stockType = document.getElementById('stocks-type').value;
+    const stockTypeSelect = document.getElementById('stocks-type');
+    const stockType = stockTypeSelect ? stockTypeSelect.value : '';
     
     const params = new URLSearchParams();
     if (active) params.append('active', active);
