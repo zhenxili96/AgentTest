@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Set
 from config import Config
 
 Base = declarative_base()
@@ -229,6 +229,18 @@ class Database:
             session.rollback()
             print(f"添加文章时出错: {e}")
             return None
+        finally:
+            session.close()
+
+    def get_existing_article_urls(self, urls: List[str]) -> Set[str]:
+        """批量查询已存在的文章URL，用于避免重复处理"""
+        if not urls:
+            return set()
+
+        session = self.get_session()
+        try:
+            results = session.query(Article.url).filter(Article.url.in_(urls)).all()
+            return {row[0] for row in results}
         finally:
             session.close()
     
