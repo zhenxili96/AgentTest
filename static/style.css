@@ -1610,3 +1610,480 @@ body {
 .modal-body {
     padding: 20px;
 }
+
+/* 投资标的建议样式 */
+.investment-targets-card {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 1px solid #bae6fd;
+}
+
+.investment-targets-card h4 {
+    color: #0369a1;
+}
+
+.card-subtitle {
+    font-size: 0.9em;
+    color: #64748b;
+    margin-bottom: 16px;
+}
+
+.investment-targets-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.investment-target-item {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.investment-target-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.target-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.target-symbol-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.target-symbol {
+    font-size: 1.2em;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.target-action {
+    font-size: 0.85em;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 999px;
+}
+
+.target-action-buy {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.target-action-sell {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.target-action-neutral {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.target-name {
+    font-size: 0.9em;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+
+.target-price {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.target-price .price-value {
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.target-price .price-change {
+    font-size: 0.9em;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+}
+
+.target-price .price-change.positive {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.target-price .price-change.negative {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.target-reason {
+    font-size: 0.88em;
+    color: #475569;
+    margin-bottom: 10px;
+    line-height: 1.5;
+}
+
+.target-position {
+    font-size: 0.85em;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-radius: 8px;
+    border: 1px dashed #cbd5e1;
+}
+
+.position-label {
+    color: #64748b;
+}
+
+.position-value {
+    color: #0f172a;
+    font-weight: 500;
+}
+
+/* 识别的股票列表样式 */
+.identified-stocks-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.identified-stock-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: #f1f5f9;
+    border-radius: 999px;
+    font-size: 0.88em;
+    transition: all 0.2s ease;
+}
+
+.identified-stock-chip:hover {
+    background: #e2e8f0;
+}
+
+.chip-symbol {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.chip-type {
+    font-size: 0.8em;
+    color: #64748b;
+    background: #e2e8f0;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.chip-price {
+    font-weight: 500;
+    color: #059669;
+}
+
+.chip-relevance {
+    cursor: help;
+}
+
+.identified-stock-chip.more {
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 500;
+}
+
+/* 股票类型徽章 */
+.stock-type-badge {
+    font-size: 0.75em;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+}
+
+.stock-type-us_stock {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.stock-type-a_stock {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.stock-type-futures {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.stock-type-etf {
+    background: #d1fae5;
+    color: #059669;
+}
+
+/* 历史建议日志样式 */
+.recommendation-history {
+    margin-top: 15px;
+}
+
+.history-empty {
+    text-align: center;
+    padding: 40px;
+    color: #64748b;
+    font-size: 0.95em;
+}
+
+.history-error {
+    text-align: center;
+    padding: 20px;
+    color: #dc2626;
+    background: #fee2e2;
+    border-radius: 8px;
+}
+
+.history-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.history-item:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    transform: translateX(4px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.history-item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.history-item-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.history-date {
+    font-size: 0.85em;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.history-theme {
+    font-weight: 600;
+    color: #0f172a;
+    background: #e2e8f0;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.9em;
+}
+
+.history-risk {
+    font-size: 0.8em;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: 500;
+}
+
+.history-risk.risk-conservative {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.history-risk.risk-balanced {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+.history-risk.risk-aggressive {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+.history-item-signal {
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 0.9em;
+}
+
+.history-item-signal.signal-buy {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.history-item-signal.signal-sell {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.history-item-signal.signal-hold {
+    background: #fef3c7;
+    color: #b45309;
+}
+
+.history-item-content {
+    margin-bottom: 10px;
+}
+
+.history-outlook {
+    color: #475569;
+    font-size: 0.92em;
+    line-height: 1.5;
+    margin-bottom: 10px;
+}
+
+.history-item-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 0.85em;
+    color: #64748b;
+    flex-wrap: wrap;
+}
+
+.history-item-action {
+    text-align: right;
+}
+
+.view-detail-link {
+    font-size: 0.85em;
+    color: #667eea;
+    font-weight: 500;
+}
+
+.history-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #e2e8f0;
+}
+
+#history-page-info {
+    font-size: 0.9em;
+    color: #64748b;
+}
+
+/* 投资标的信号徽章样式 */
+.target-signal-badge {
+    font-weight: 700;
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 0.9em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.target-signal-badge.signal-buy {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    color: white;
+}
+
+.target-signal-badge.signal-sell {
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+    color: white;
+}
+
+.target-signal-badge.signal-hold {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+}
+
+.signal-strength {
+    font-size: 0.8em;
+    opacity: 0.9;
+}
+
+/* 投资标的卡片信号高亮 */
+.investment-target-item.target-signal-buy {
+    border-left: 4px solid #22c55e;
+}
+
+.investment-target-item.target-signal-sell {
+    border-left: 4px solid #ef4444;
+}
+
+.investment-target-item.target-signal-hold {
+    border-left: 4px solid #f59e0b;
+}
+
+/* 目标价和止损价样式 */
+.target-price-levels {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 10px;
+    font-size: 0.85em;
+    flex-wrap: wrap;
+}
+
+.target-level {
+    color: #059669;
+    font-weight: 500;
+}
+
+.stop-loss-level {
+    color: #dc2626;
+    font-weight: 500;
+}
+
+/* 操作建议详情样式 */
+.target-action-detail {
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    background: #fffbeb;
+    border-radius: 8px;
+    border: 1px solid #fef3c7;
+}
+
+.action-label {
+    font-size: 0.85em;
+    color: #92400e;
+}
+
+.action-text {
+    font-size: 0.9em;
+    color: #78350f;
+    font-weight: 500;
+}
+
+@media (max-width: 768px) {
+    .history-item-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .history-item-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    
+    .history-item-stats {
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .target-header {
+        flex-direction: column;
+        gap: 10px;
+    }
+}

@@ -274,6 +274,71 @@ def get_latest_recommendation():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route("/api/analysis/recommendation/history", methods=["GET"])
+def get_recommendation_history():
+    """获取历史投资建议列表"""
+    try:
+        theme = request.args.get("theme")
+        limit = request.args.get("limit", type=int, default=20)
+        offset = request.args.get("offset", type=int, default=0)
+        
+        records = db.get_recommendation_history(theme=theme, limit=limit, offset=offset)
+        total = db.get_recommendation_count(theme=theme)
+        
+        history_data = []
+        for record in records:
+            # 提取关键信息用于列表展示
+            payload = record.get("payload", {})
+            recommendation = payload.get("recommendation", {})
+            
+            history_data.append({
+                "id": record["id"],
+                "theme": record["theme"],
+                "risk_profile": record["risk_profile"],
+                "horizon_days": record["horizon_days"],
+                "created_at": format_beijing_time(record["created_at"]),
+                "signal": recommendation.get("signal", "观望"),
+                "confidence": recommendation.get("confidence", 0),
+                "outlook": recommendation.get("outlook", ""),
+                "investment_targets_count": len(recommendation.get("investment_targets", [])),
+            })
+        
+        return jsonify({
+            "success": True,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "history": history_data,
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/analysis/recommendation/<int:rec_id>", methods=["GET"])
+def get_recommendation_by_id(rec_id):
+    """获取指定ID的投资建议详情"""
+    try:
+        record = db.get_recommendation_by_id(rec_id)
+        if not record:
+            return jsonify({"success": False, "error": "建议记录不存在"}), 404
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "id": record["id"],
+                "theme": record["theme"],
+                "keywords": record["keywords"],
+                "risk_profile": record["risk_profile"],
+                "horizon_days": record["horizon_days"],
+                "max_articles": record["max_articles"],
+                "created_at": format_beijing_time(record["created_at"]),
+                "payload": record["payload"],
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route("/api/keywords/mine", methods=["POST"])
 def mine_keywords():
     """挖掘关键词"""

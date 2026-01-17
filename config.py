@@ -26,6 +26,21 @@ class Config:
     
     # Alpha Vantage配置（可选）
     ALPHA_VANTAGE_API_KEY: str = os.getenv("ALPHA_VANTAGE_API_KEY", "")
+    
+    # Finnhub配置（新闻+行情，免费60次/分钟）
+    FINNHUB_API_KEY: str = os.getenv("FINNHUB_API_KEY", "")
+    
+    # GNews API配置（新闻搜索，免费100次/天）
+    GNEWS_API_KEY: str = os.getenv("GNEWS_API_KEY", "")
+    
+    # Marketaux API配置（金融新闻，免费100次/天）
+    MARKETAUX_API_KEY: str = os.getenv("MARKETAUX_API_KEY", "")
+    
+    # FRED API配置（美联储经济数据）
+    FRED_API_KEY: str = os.getenv("FRED_API_KEY", "")
+    
+    # Tushare配置（中国市场数据）
+    TUSHARE_TOKEN: str = os.getenv("TUSHARE_TOKEN", "")
 
     # 默认关注的股市代码（可通过环境变量覆盖）
     STOCK_SYMBOLS: List[str] = [
@@ -87,8 +102,23 @@ class Config:
         "https://feeds.bloomberg.com/markets/news.rss",
         # 通用财经RSS
         "http://feeds.feedburner.com/FinancialTimes/com/companies",
-        # 注意：中文RSS源格式可能不同，需要特殊处理
-        # 如需添加中文源，建议使用专门的RSS聚合服务
+        
+        # 贵金属专业网站
+        "https://www.kitco.com/rss/gold.xml",                    # Kitco黄金白银
+        "https://www.kitco.com/rss/all_kitco_news.xml",          # Kitco全部新闻
+        "https://www.investing.com/rss/news_14.rss",             # Investing.com商品
+        "https://www.investing.com/rss/news_25.rss",             # Investing.com经济指标
+        
+        # 宏观经济/市场分析
+        "https://seekingalpha.com/market_currents.xml",          # Seeking Alpha市场动态
+        "https://seekingalpha.com/tag/etfs.xml",                 # Seeking Alpha ETF
+        "https://www.marketwatch.com/rss/topstories",            # MarketWatch头条
+        "https://www.marketwatch.com/rss/marketpulse",           # MarketWatch市场脉搏
+        
+        # 中文源（通过RSSHub，需要可用的RSSHub实例）
+        # "https://rsshub.app/cls/depth/1000",                   # 财联社深度
+        # "https://rsshub.app/eastmoney/important",              # 东方财富要闻
+        # "https://rsshub.app/sina/finance",                     # 新浪财经
     ]
     
     # 用户代理（用于爬虫）
@@ -101,6 +131,7 @@ class Config:
         # NewsAPI是可选的（可以使用RSS源替代）
         has_ai_api = cls.BLTCY_API_KEY or cls.OPENROUTER_API_KEY or cls.OPENAI_API_KEY
         warnings = []
+        optional_info = []
         
         if not has_ai_api:
             warnings.append("AI API（BLTCY_API_KEY、OPENROUTER_API_KEY或OPENAI_API_KEY未配置，将使用默认置信度评估，所有文章分数为0.5）")
@@ -108,9 +139,40 @@ class Config:
         if not cls.NEWS_API_KEY:
             warnings.append("NEWS_API_KEY（未配置将仅使用RSS源）")
         
+        # 新增数据源状态
+        if cls.FINNHUB_API_KEY:
+            optional_info.append("✅ Finnhub（新闻+行情）")
+        else:
+            optional_info.append("⬜ FINNHUB_API_KEY（未配置，跳过Finnhub数据源）")
+        
+        if cls.GNEWS_API_KEY:
+            optional_info.append("✅ GNews（新闻搜索）")
+        else:
+            optional_info.append("⬜ GNEWS_API_KEY（未配置，跳过GNews数据源）")
+        
+        if cls.MARKETAUX_API_KEY:
+            optional_info.append("✅ Marketaux（金融新闻）")
+        else:
+            optional_info.append("⬜ MARKETAUX_API_KEY（未配置，跳过Marketaux数据源）")
+        
+        if cls.FRED_API_KEY:
+            optional_info.append("✅ FRED（宏观经济数据）")
+        else:
+            optional_info.append("⬜ FRED_API_KEY（未配置，跳过FRED数据源）")
+        
+        if cls.TUSHARE_TOKEN:
+            optional_info.append("✅ Tushare（中国市场数据）")
+        else:
+            optional_info.append("⬜ TUSHARE_TOKEN（未配置，跳过Tushare数据源）")
+        
         if warnings:
             print(f"提示：可选配置项未设置:")
             for warning in warnings:
                 print(f"  - {warning}")
+        
+        if optional_info:
+            print(f"\n数据源状态:")
+            for info in optional_info:
+                print(f"  {info}")
         
         return True

@@ -312,6 +312,85 @@ class Database:
         finally:
             session.close()
     
+    def get_recommendation_history(
+        self,
+        theme: Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """获取历史投资建议列表"""
+        session = self.get_session()
+        try:
+            query = session.query(InvestmentRecommendation)
+            if theme:
+                query = query.filter_by(theme=theme)
+            
+            records = query.order_by(
+                InvestmentRecommendation.created_at.desc()
+            ).offset(offset).limit(limit).all()
+            
+            result = []
+            for record in records:
+                try:
+                    payload = json.loads(record.payload)
+                except json.JSONDecodeError:
+                    payload = {}
+                
+                result.append({
+                    "id": record.id,
+                    "theme": record.theme,
+                    "keywords": record.keywords,
+                    "risk_profile": record.risk_profile,
+                    "horizon_days": record.horizon_days,
+                    "max_articles": record.max_articles,
+                    "payload": payload,
+                    "created_at": record.created_at,
+                })
+            return result
+        except Exception as e:
+            print(f"读取历史投资建议时出错: {e}")
+            return []
+        finally:
+            session.close()
+    
+    def get_recommendation_count(self, theme: Optional[str] = None) -> int:
+        """获取投资建议总数"""
+        session = self.get_session()
+        try:
+            query = session.query(func.count(InvestmentRecommendation.id))
+            if theme:
+                query = query.filter(InvestmentRecommendation.theme == theme)
+            return query.scalar() or 0
+        except Exception as e:
+            print(f"统计投资建议数量时出错: {e}")
+            return 0
+        finally:
+            session.close()
+    
+    def get_recommendation_by_id(self, rec_id: int) -> Optional[Dict[str, Any]]:
+        """根据ID获取投资建议"""
+        session = self.get_session()
+        try:
+            record = session.query(InvestmentRecommendation).filter_by(id=rec_id).first()
+            if not record:
+                return None
+            payload = json.loads(record.payload)
+            return {
+                "id": record.id,
+                "theme": record.theme,
+                "keywords": record.keywords,
+                "risk_profile": record.risk_profile,
+                "horizon_days": record.horizon_days,
+                "max_articles": record.max_articles,
+                "payload": payload,
+                "created_at": record.created_at,
+            }
+        except Exception as e:
+            print(f"读取投资建议时出错: {e}")
+            return None
+        finally:
+            session.close()
+    
     def get_high_confidence_articles(
         self, 
         limit: int = 50,

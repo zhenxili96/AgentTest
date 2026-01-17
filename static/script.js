@@ -386,11 +386,140 @@ async function loadLatestRecommendation() {
             source: 'auto',
             created_at: result.data.created_at,
         });
+        
+        // 同时加载历史建议
+        loadRecommendationHistory();
     } catch (error) {
         updateRecommendationStatus('加载最新建议失败，请稍后再试。');
         resultArea.className = 'recommendation-result error';
         resultArea.innerHTML = `<h3>❌ 加载失败</h3><p>${escapeHtml(error.message)}</p>`;
     }
+}
+
+// 历史建议分页状态
+let historyCurrentPage = 0;
+let historyTotalPages = 1;
+const historyPageSize = 10;
+
+async function loadRecommendationHistory(page = 0) {
+    const historyContainer = document.getElementById('recommendation-history');
+    const pagination = document.getElementById('history-pagination');
+    if (!historyContainer) return;
+    
+    const themeInput = document.getElementById('recommend-theme');
+    const theme = themeInput ? themeInput.value.trim() : '';
+    
+    historyContainer.innerHTML = '<div class="loading">加载历史建议...</div>';
+    
+    try {
+        const offset = page * historyPageSize;
+        let url = `${API_BASE}/analysis/recommendation/history?limit=${historyPageSize}&offset=${offset}`;
+        if (theme) {
+            url += `&theme=${encodeURIComponent(theme)}`;
+        }
+        
+        const response = await fetch(url);
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || '加载失败');
+        }
+        
+        historyCurrentPage = page;
+        historyTotalPages = Math.ceil(result.total / historyPageSize);
+        
+        if (result.history.length === 0) {
+            historyContainer.innerHTML = '<div class="history-empty">暂无历史建议记录</div>';
+            pagination.style.display = 'none';
+            return;
+        }
+        
+        // 渲染历史建议列表
+        historyContainer.innerHTML = result.history.map(item => `
+            <div class="history-item" onclick="loadRecommendationDetail(${item.id})">
+                <div class="history-item-header">
+                    <div class="history-item-meta">
+                        <span class="history-date">${formatDate(item.created_at)}</span>
+                        <span class="history-theme">${escapeHtml(item.theme)}</span>
+                        <span class="history-risk risk-${item.risk_profile}">${getRiskProfileLabel(item.risk_profile)}</span>
+                    </div>
+                    <div class="history-item-signal signal-${getSignalClass(item.signal)}">
+                        ${escapeHtml(item.signal || '观望')}
+                    </div>
+                </div>
+                <div class="history-item-content">
+                    <div class="history-outlook">${escapeHtml(item.outlook || '暂无结论').substring(0, 100)}${item.outlook && item.outlook.length > 100 ? '...' : ''}</div>
+                    <div class="history-item-stats">
+                        <span>置信度: ${(item.confidence || 0).toFixed(2)}</span>
+                        <span>投资周期: ${item.horizon_days}天</span>
+                        <span>标的数: ${item.investment_targets_count || 0}</span>
+                    </div>
+                </div>
+                <div class="history-item-action">
+                    <span class="view-detail-link">点击查看详情 →</span>
+                </div>
+            </div>
+        `).join('');
+        
+        // 更新分页
+        if (historyTotalPages > 1) {
+            pagination.style.display = 'flex';
+            document.getElementById('history-prev').disabled = page === 0;
+            document.getElementById('history-next').disabled = page >= historyTotalPages - 1;
+            document.getElementById('history-page-info').textContent = `第 ${page + 1} / ${historyTotalPages} 页`;
+        } else {
+            pagination.style.display = 'none';
+        }
+        
+    } catch (error) {
+        historyContainer.innerHTML = `<div class="history-error">❌ 加载失败: ${escapeHtml(error.message)}</div>`;
+    }
+}
+
+function loadHistoryPage(direction) {
+    if (direction === 'prev' && historyCurrentPage > 0) {
+        loadRecommendationHistory(historyCurrentPage - 1);
+    } else if (direction === 'next' && historyCurrentPage < historyTotalPages - 1) {
+        loadRecommendationHistory(historyCurrentPage + 1);
+    }
+}
+
+async function loadRecommendationDetail(id) {
+    const resultArea = document.getElementById('recommendation-result');
+    if (!resultArea) return;
+    
+    resultArea.className = 'recommendation-result loading';
+    resultArea.innerHTML = '<div class="loading">加载建议详情...</div>';
+    
+    try {
+        const response = await fetch(`${API_BASE}/analysis/recommendation/${id}`);
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.error || '加载失败');
+        }
+        
+        updateRecommendationStatus(`查看历史建议 (ID: ${id}) - 生成时间：${formatDate(result.data.created_at)}`);
+        renderRecommendation(result.data.payload, {
+            source: 'history',
+            created_at: result.data.created_at,
+        });
+        
+        // 滚动到详情区域
+        resultArea.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (error) {
+        resultArea.className = 'recommendation-result error';
+        resultArea.innerHTML = `<h3>❌ 加载详情失败</h3><p>${escapeHtml(error.message)}</p>`;
+    }
+}
+
+function getRiskProfileLabel(riskProfile) {
+    const labels = {
+        'conservative': '保守',
+        'balanced': '平衡',
+        'aggressive': '激进',
+    };
+    return labels[riskProfile] || riskProfile;
 }
 
 function updateRecommendationStatus(message) {
@@ -416,12 +545,18 @@ function renderRecommendation(data, meta = {}) {
     const verification = data.verification || {};
     const synthesis = data.synthesis || {};
     const recommendation = data.recommendation || {};
+    const market = data.market || {};
     const evidence = synthesis.evidence || [];
     const signalProbs = recommendation.signal_probs || {};
     const signalLabel = recommendation.signal || '观望';
     const buyProb = formatProbability(signalProbs.buy);
     const sellProb = formatProbability(signalProbs.sell);
     const holdProb = formatProbability(signalProbs.hold);
+    
+    // 获取投资标的
+    const investmentTargets = recommendation.investment_targets || [];
+    const identifiedStocks = recommendation.identified_stocks || market.symbols || [];
+    const stockPrices = recommendation.stock_prices || market.prices || [];
 
     resultArea.className = 'recommendation-result success';
     resultArea.innerHTML = `
@@ -430,7 +565,7 @@ function renderRecommendation(data, meta = {}) {
                 <h3>建议概览</h3>
                 <p>${escapeHtml(recommendation.outlook || '暂无结论')}</p>
                 <div class="signal-summary">
-                    <span class="signal-label">明确建议：</span>
+                    <span class="signal-label">整体建议：</span>
                     <span class="signal-value signal-${getSignalClass(signalLabel)}">${escapeHtml(signalLabel)}</span>
                     <div class="signal-probabilities">
                         <span>买入 ${buyProb}</span>
@@ -443,6 +578,60 @@ function renderRecommendation(data, meta = {}) {
                 置信度 ${(recommendation.confidence || 0).toFixed(2)}
             </div>
         </div>
+
+        ${investmentTargets.length > 0 ? `
+        <div class="recommendation-card investment-targets-card">
+            <h4>📈 具体投资标的建议</h4>
+            <p class="card-subtitle">以下是基于分析识别出的具体投资标的，每个标的均有明确的买入/卖出/观望信号</p>
+            <div class="investment-targets-grid">
+                ${investmentTargets.map(target => `
+                    <div class="investment-target-item target-signal-${getSignalClass(target.signal || '观望')}">
+                        <div class="target-header">
+                            <div class="target-symbol-info">
+                                <span class="target-symbol">${escapeHtml(target.symbol)}</span>
+                                <span class="stock-type-badge stock-type-${target.stock_type || 'us_stock'}">
+                                    ${getStockTypeLabel(target.stock_type)}
+                                </span>
+                            </div>
+                            <div class="target-signal-badge signal-${getSignalClass(target.signal || '观望')}">
+                                ${escapeHtml(target.signal || '观望')}
+                                ${target.signal_strength ? `<span class="signal-strength">(${escapeHtml(target.signal_strength)})</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="target-name">${escapeHtml(target.name || target.symbol)}</div>
+                        ${target.current_price ? `
+                            <div class="target-price">
+                                <span class="price-value">
+                                    ${target.stock_type === 'a_stock' || target.stock_type === 'futures' ? '' : '$'}${target.current_price?.toFixed(2) || 'N/A'}
+                                    ${target.stock_type === 'a_stock' ? '元' : target.stock_type === 'futures' ? '元/手' : ''}
+                                </span>
+                                ${target.change_percent !== null && target.change_percent !== undefined ? `
+                                    <span class="price-change ${target.change_percent >= 0 ? 'positive' : 'negative'}">
+                                        ${target.change_percent >= 0 ? '+' : ''}${target.change_percent?.toFixed(2) || '0.00'}%
+                                    </span>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                        ${target.target_price || target.stop_loss ? `
+                            <div class="target-price-levels">
+                                ${target.target_price ? `<span class="target-level">🎯 目标价: ${target.target_price}</span>` : ''}
+                                ${target.stop_loss ? `<span class="stop-loss-level">🛑 止损价: ${target.stop_loss}</span>` : ''}
+                            </div>
+                        ` : ''}
+                        <div class="target-action-detail">
+                            <span class="action-label">📋 操作建议：</span>
+                            <span class="action-text">${escapeHtml(target.action || '关注走势')}</span>
+                        </div>
+                        <div class="target-reason">${escapeHtml(target.reason || '')}</div>
+                        <div class="target-position">
+                            <span class="position-label">💼 仓位建议：</span>
+                            <span class="position-value">${escapeHtml(target.position_suggestion || '根据风险偏好决定')}</span>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
 
         <div class="recommendation-grid">
             <div class="recommendation-card">
@@ -484,6 +673,26 @@ function renderRecommendation(data, meta = {}) {
             </div>
         </div>
 
+        ${identifiedStocks.length > 0 ? `
+        <div class="recommendation-card">
+            <h4>🔍 识别的相关标的 (${identifiedStocks.length}个)</h4>
+            <div class="identified-stocks-list">
+                ${identifiedStocks.slice(0, 12).map(stock => {
+                    const priceInfo = stockPrices.find(p => p.symbol === stock.symbol) || {};
+                    return `
+                        <div class="identified-stock-chip">
+                            <span class="chip-symbol">${escapeHtml(stock.symbol)}</span>
+                            <span class="chip-type">${getStockTypeLabel(stock.stock_type)}</span>
+                            ${priceInfo.price ? `<span class="chip-price">$${priceInfo.price?.toFixed(2)}</span>` : ''}
+                            ${stock.relevance ? `<span class="chip-relevance" title="${escapeHtml(stock.relevance)}">📊</span>` : ''}
+                        </div>
+                    `;
+                }).join('')}
+                ${identifiedStocks.length > 12 ? `<div class="identified-stock-chip more">+${identifiedStocks.length - 12}个</div>` : ''}
+            </div>
+        </div>
+        ` : ''}
+
         <div class="recommendation-card">
             <h4>关注清单</h4>
             <ul>
@@ -507,6 +716,29 @@ function renderRecommendation(data, meta = {}) {
             ` : '<p>暂无证据</p>'}
         </div>
     `;
+}
+
+// 获取股票类型标签
+function getStockTypeLabel(stockType) {
+    const labels = {
+        'us_stock': '美股',
+        'a_stock': 'A股',
+        'futures': '期货',
+        'etf': 'ETF',
+    };
+    return labels[stockType] || stockType || '股票';
+}
+
+// 获取操作建议的样式类
+function getActionClass(action) {
+    if (!action) return 'neutral';
+    const actionLower = action.toLowerCase();
+    if (actionLower.includes('买入') || actionLower.includes('关注') || actionLower.includes('低吸')) {
+        return 'buy';
+    } else if (actionLower.includes('卖出') || actionLower.includes('减仓') || actionLower.includes('谨慎')) {
+        return 'sell';
+    }
+    return 'neutral';
 }
 
 function getConfidenceClass(confidence) {

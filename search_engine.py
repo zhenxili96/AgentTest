@@ -1,11 +1,25 @@
 """信息搜索引擎模块"""
 import requests
 import feedparser
+import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from bs4 import BeautifulSoup
 from datetime import datetime
 from typing import List, Dict, Optional, Union, Tuple, Any
 from config import Config
+
+# 尝试导入可选依赖
+try:
+    import finnhub
+    HAS_FINNHUB = True
+except ImportError:
+    HAS_FINNHUB = False
+
+try:
+    from fredapi import Fred
+    HAS_FRED = True
+except ImportError:
+    HAS_FRED = False
 
 
 class SearchEngine:
@@ -15,6 +29,16 @@ class SearchEngine:
         self.news_api_key = Config.NEWS_API_KEY
         self.user_agent = Config.USER_AGENT
         self.keywords = Config.SEARCH_KEYWORDS
+        
+        # 初始化Finnhub客户端
+        self.finnhub_client = None
+        if HAS_FINNHUB and Config.FINNHUB_API_KEY:
+            self.finnhub_client = finnhub.Client(api_key=Config.FINNHUB_API_KEY)
+        
+        # 初始化FRED客户端
+        self.fred_client = None
+        if HAS_FRED and Config.FRED_API_KEY:
+            self.fred_client = Fred(api_key=Config.FRED_API_KEY)
 
     def _normalize_keywords(
         self,
@@ -141,6 +165,167 @@ class SearchEngine:
         
         return articles
     
+    def search_finnhub(
+        self,
+        max_results: int = 50,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None,
+        category: str = "general"
+    ) -> List[Dict]:
+        """使用Finnhub搜索新闻（支持市场新闻和公司新闻）"""
+        if not self.finnhub_client:
+            return []
+        
+        active_keywords = self._normalize_keywords(theme=theme, keywords=keywords)
+        articles = []
+        
+        try:
+            # 获取市场新闻
+            news = self.finnhub_client.general_news(category, min_id=0)
+            
+            for item in news[:max_results]:
+                title = item.get("headline", "")
+                summary = item.get("summary", "")
+                
+                # 关键词匹配
+                title_lower = title.lower()
+                summary_lower = summary.lower()
+                matched_keywords = [
+                    kw for kw in active_keywords
+                    if kw and (kw.lower() in title_lower or kw.lower() in summary_lower)
+                ]
+                
+                if not matched_keywords:
+                    continue
+                
+                # 解析时间戳
+                timestamp = item.get("datetime", 0)
+                published_at = datetime.fromtimestamp(timestamp) if timestamp else datetime.utcnow()
+                
+                articles.append({
+                    "title": title,
+                    "content": summary,
+                    "url": item.get("url", ""),
+                    "source": item.get("source", "Finnhub"),
+                    "author": None,
+                    "published_at": published_at,
+                    "keywords": ", ".join(matched_keywords),
+                    "image": item.get("image", ""),
+                })
+            
+            if articles:
+                print(f"  ✅ Finnhub: 找到 {len(articles)} 篇匹配文章")
+        except Exception as e:
+            print(f"Finnhub搜索出错: {e}")
+        
+        return articles
+    
+    def search_gnews(
+        self,
+        max_results: int = 50,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None
+    ) -> List[Dict]:
+        """使用GNews API搜索新闻"""
+        if not Config.GNEWS_API_KEY:
+            return []
+        
+        active_keywords = self._normalize_keywords(theme=theme, keywords=keywords)
+        articles = []
+        
+        try:
+            # 构建查询
+            search_query = " OR ".join(active_keywords[:5])  # GNews限制查询长度
+            
+            url = "https://gnews.io/api/v4/search"
+            params = {
+                "q": search_query,
+                "lang": "en",
+                "max": min(max_results, 100),
+                "apikey": Config.GNEWS_API_KEY,
+            }
+            
+            headers = {"User-Agent": self.user_agent}
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            for item in data.get("articles", [])[:max_results]:
+                published_at = self._parse_date(item.get("publishedAt"))
+                
+                articles.append({
+                    "title": item.get("title", ""),
+                    "content": item.get("description", "") + " " + item.get("content", ""),
+                    "url": item.get("url", ""),
+                    "source": item.get("source", {}).get("name", "GNews"),
+                    "author": None,
+                    "published_at": published_at,
+                    "keywords": ", ".join(active_keywords[:3]),
+                    "image": item.get("image", ""),
+                })
+            
+            if articles:
+                print(f"  ✅ GNews: 找到 {len(articles)} 篇文章")
+        except Exception as e:
+            print(f"GNews搜索出错: {e}")
+        
+        return articles
+    
+    def search_marketaux(
+        self,
+        max_results: int = 50,
+        theme: Optional[str] = None,
+        keywords: Optional[Union[List[str], str]] = None
+    ) -> List[Dict]:
+        """使用Marketaux API搜索金融新闻"""
+        if not Config.MARKETAUX_API_KEY:
+            return []
+        
+        active_keywords = self._normalize_keywords(theme=theme, keywords=keywords)
+        articles = []
+        
+        try:
+            # Marketaux支持多个过滤器
+            search_query = ",".join(active_keywords[:5])
+            
+            url = "https://api.marketaux.com/v1/news/all"
+            params = {
+                "api_token": Config.MARKETAUX_API_KEY,
+                "search": search_query,
+                "language": "en",
+                "limit": min(max_results, 100),
+            }
+            
+            headers = {"User-Agent": self.user_agent}
+            response = requests.get(url, params=params, headers=headers, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            for item in data.get("data", [])[:max_results]:
+                published_at = self._parse_date(item.get("published_at"))
+                
+                # 提取实体标签
+                entities = item.get("entities", [])
+                entity_names = [e.get("name", "") for e in entities if e.get("name")]
+                
+                articles.append({
+                    "title": item.get("title", ""),
+                    "content": item.get("description", "") or item.get("snippet", ""),
+                    "url": item.get("url", ""),
+                    "source": item.get("source", "Marketaux"),
+                    "author": None,
+                    "published_at": published_at,
+                    "keywords": ", ".join(entity_names[:5]) if entity_names else ", ".join(active_keywords[:3]),
+                    "sentiment": item.get("sentiment", None),
+                })
+            
+            if articles:
+                print(f"  ✅ Marketaux: 找到 {len(articles)} 篇文章")
+        except Exception as e:
+            print(f"Marketaux搜索出错: {e}")
+        
+        return articles
+    
     def search_rss_feeds(
         self,
         max_results: int = 50,
@@ -262,18 +447,44 @@ class SearchEngine:
         """搜索所有数据源"""
         all_articles = []
         
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = {
-                executor.submit(
-                    self.search_newsapi, "", max_results, theme=theme, keywords=keywords
-                ): "newsapi",
-                executor.submit(
-                    self.search_rss_feeds, max_results, theme=theme, keywords=keywords
-                ): "rss",
-            }
+        # 构建所有可用的数据源任务
+        search_tasks = []
+        
+        # NewsAPI
+        if self.news_api_key:
+            search_tasks.append(("newsapi", self.search_newsapi, ["", max_results], {"theme": theme, "keywords": keywords}))
+        
+        # RSS源
+        search_tasks.append(("rss", self.search_rss_feeds, [max_results], {"theme": theme, "keywords": keywords}))
+        
+        # Finnhub
+        if self.finnhub_client:
+            search_tasks.append(("finnhub", self.search_finnhub, [max_results], {"theme": theme, "keywords": keywords}))
+        
+        # GNews
+        if Config.GNEWS_API_KEY:
+            search_tasks.append(("gnews", self.search_gnews, [max_results], {"theme": theme, "keywords": keywords}))
+        
+        # Marketaux
+        if Config.MARKETAUX_API_KEY:
+            search_tasks.append(("marketaux", self.search_marketaux, [max_results], {"theme": theme, "keywords": keywords}))
+        
+        # 并行执行所有数据源搜索
+        max_workers = min(6, len(search_tasks))
+        if max_workers > 0:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = {}
+                for name, func, args, kwargs in search_tasks:
+                    future = executor.submit(func, *args, **kwargs)
+                    futures[future] = name
 
-            for future in as_completed(futures):
-                all_articles.extend(future.result())
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        all_articles.extend(result)
+                    except Exception as e:
+                        source_name = futures[future]
+                        print(f"  ⚠️ {source_name} 搜索失败: {e}")
         
         # 去重（基于URL）
         seen_urls = set()
@@ -283,6 +494,8 @@ class SearchEngine:
             if url and url not in seen_urls:
                 seen_urls.add(url)
                 unique_articles.append(article)
+        
+        print(f"\n📊 搜索汇总: 共获取 {len(unique_articles)} 篇去重文章（来自 {len(search_tasks)} 个数据源）")
         
         return unique_articles[:max_results]
 
@@ -366,6 +579,93 @@ class SearchEngine:
         if stock_data.get("errors"):
             lines.append("注意：部分行情获取失败，可能因频率限制或代码无效。")
 
+        return "\n".join(lines)
+    
+    def fetch_fred_data(
+        self,
+        series_ids: Optional[List[str]] = None
+    ) -> Dict:
+        """获取FRED宏观经济数据
+        
+        常用指标:
+        - DGS10: 10年期国债收益率
+        - FEDFUNDS: 联邦基金利率
+        - CPIAUCSL: CPI消费者物价指数
+        - UNRATE: 失业率
+        - GDP: 国内生产总值
+        - M2SL: M2货币供应量
+        - DCOILWTICO: WTI原油价格
+        - GOLDAMGBD228NLBM: 黄金价格
+        - DEXUSEU: 美元/欧元汇率
+        """
+        if not self.fred_client:
+            return {
+                "success": False,
+                "error": "FRED_API_KEY 未配置或fredapi库未安装",
+                "data": {},
+            }
+        
+        # 默认获取的经济指标
+        if series_ids is None:
+            series_ids = [
+                "DGS10",        # 10年期国债收益率
+                "FEDFUNDS",     # 联邦基金利率
+                "CPIAUCSL",     # CPI
+                "UNRATE",       # 失业率
+                "DCOILWTICO",   # WTI原油
+            ]
+        
+        results = {}
+        errors = []
+        
+        for series_id in series_ids:
+            try:
+                # 获取最近一个数据点
+                data = self.fred_client.get_series(series_id, observation_start="2024-01-01")
+                if data is not None and len(data) > 0:
+                    latest_value = data.iloc[-1]
+                    latest_date = data.index[-1]
+                    results[series_id] = {
+                        "value": float(latest_value) if not pd.isna(latest_value) else None,
+                        "date": latest_date.strftime("%Y-%m-%d") if hasattr(latest_date, 'strftime') else str(latest_date),
+                        "source": "FRED",
+                    }
+            except Exception as e:
+                errors.append({"series_id": series_id, "error": str(e)})
+        
+        return {
+            "success": len(results) > 0,
+            "data": results,
+            "errors": errors,
+            "updated_at": datetime.utcnow().isoformat() + "Z",
+        }
+    
+    def build_macro_context(self, fred_data: Dict) -> str:
+        """将FRED宏观经济数据转换为分析上下文"""
+        if not fred_data or not fred_data.get("data"):
+            return ""
+        
+        # 指标名称映射
+        series_names = {
+            "DGS10": "10年期国债收益率",
+            "FEDFUNDS": "联邦基金利率",
+            "CPIAUCSL": "CPI消费者物价指数",
+            "UNRATE": "失业率",
+            "GDP": "GDP",
+            "M2SL": "M2货币供应量",
+            "DCOILWTICO": "WTI原油价格",
+            "GOLDAMGBD228NLBM": "黄金价格(美元/盎司)",
+            "DEXUSEU": "美元/欧元汇率",
+        }
+        
+        lines = ["宏观经济指标（FRED）："]
+        for series_id, info in fred_data.get("data", {}).items():
+            name = series_names.get(series_id, series_id)
+            value = info.get("value")
+            date = info.get("date", "")
+            value_text = f"{value:.2f}" if value is not None else "N/A"
+            lines.append(f"- {name}: {value_text} (更新: {date})")
+        
         return "\n".join(lines)
     
     def _parse_date(self, date_str: Optional[str]) -> datetime:

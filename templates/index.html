@@ -362,6 +362,23 @@
 
                 <div id="recommendation-result" class="recommendation-result"></div>
             </div>
+            
+            <!-- 历史建议日志 -->
+            <div class="card" style="margin-top: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h2>📜 历史建议日志</h2>
+                    <button class="btn btn-secondary" onclick="loadRecommendationHistory()" style="padding: 8px 16px;">刷新</button>
+                </div>
+                <p class="workflow-subtitle">查看历史投资建议记录，追踪投资决策变化</p>
+                <div id="recommendation-history" class="recommendation-history">
+                    <div class="loading">加载中...</div>
+                </div>
+                <div id="history-pagination" class="history-pagination" style="display: none;">
+                    <button class="btn btn-small" id="history-prev" onclick="loadHistoryPage('prev')" disabled>上一页</button>
+                    <span id="history-page-info">第 1 页</span>
+                    <button class="btn btn-small" id="history-next" onclick="loadHistoryPage('next')">下一页</button>
+                </div>
+            </div>
         </div>
 
         <!-- 实时发现标签页 -->

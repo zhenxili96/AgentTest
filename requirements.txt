@@ -12,3 +12,9 @@ flask>=3.0.0
 flask-cors>=4.0.0
 pydantic>=2.5.0
 akshare>=1.12.0
+
+# 新增数据源依赖
+yfinance>=0.2.36
+finnhub-python>=2.4.19
+tushare>=1.4.1
+fredapi>=0.5.1
